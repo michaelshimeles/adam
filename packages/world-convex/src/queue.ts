@@ -319,6 +319,9 @@ export function createQueue(
   }
 
   async function start(): Promise<void> {
+    // In-Convex execution mode: the Convex scheduler delivers jobs straight
+    // into runner actions, so this process must not run a competing pump.
+    if (process.env.WORLD_CONVEX_DISABLE_PUMP === "1") return;
     // Must not block: eve awaits world.start() while the process that serves
     // our delivery target (and its health endpoint) is still booting.
     // Waiting for host health here would deadlock the boot. Deliveries that

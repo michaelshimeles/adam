@@ -3,11 +3,29 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Lease recovery: a crashed pump leaves jobs in `claimed` past their lease.
+// Lease recovery: a crashed worker leaves jobs in `claimed` past their lease.
 crons.interval(
   "requeue expired queue leases",
   { minutes: 1 },
   internal.world.queue.requeueExpired,
+  {},
+);
+
+// Convex-mode safety net: wake the runner if a scheduled tick was lost
+// (e.g. functions replaced mid-flight by a deploy).
+crons.interval(
+  "sweep due queue jobs",
+  { minutes: 1 },
+  internal.world.queue.sweepDue,
+  {},
+);
+
+// eve markdown schedule (agent/schedules/heartbeat.md) — hourly, matching
+// the cron the eve server would have registered ("0 * * * *").
+crons.hourly(
+  "eve heartbeat schedule",
+  { minuteUTC: 0 },
+  internal.runner.schedule.heartbeat,
   {},
 );
 

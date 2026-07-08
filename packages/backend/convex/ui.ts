@@ -198,6 +198,93 @@ export const streamText = query({
   },
 });
 
+/**
+ * Decode one workflow stream frame into a session event object.
+ *
+ * Session event streams are written by eve as serde-framed devalue payloads:
+ *   [4-byte BE payload length][4-byte format magic "devl"][devalue JSON]
+ * where the devalue value is a Uint8Array holding one NDJSON-encoded
+ * HandleMessageStreamEvent line. Decoding server-side keeps the client free
+ * of binary handling and the devalue dependency.
+ */
+function decodeSessionEventFrame(buf: ArrayBuffer): unknown {
+  const bytes = new Uint8Array(buf);
+  if (bytes.length < 8) return null;
+  const magic = String.fromCharCode(
+    bytes[4]!,
+    bytes[5]!,
+    bytes[6]!,
+    bytes[7]!,
+  );
+  if (magic !== "devl") return null;
+  try {
+    const flat = JSON.parse(new TextDecoder().decode(bytes.subarray(8))) as
+      | unknown[]
+      | unknown;
+    if (!Array.isArray(flat) || flat.length < 2) return null;
+    const head = flat[0];
+    if (!Array.isArray(head) || head[0] !== "Uint8Array") return null;
+    const b64 = flat[head[1] as number];
+    if (typeof b64 !== "string") return null;
+    // "." is devalue's encoding of an empty byte array
+    if (b64 === ".") return null;
+    const bin = atob(b64);
+    const raw = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(raw)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reactive tail of a chat session's event stream, decoded into structured
+ * HandleMessageStreamEvent objects. The chat UI subscribes to this — every
+ * token append lands here via Convex reactivity, no SSE connection needed.
+ */
+export const sessionEvents = query({
+  args: {
+    sessionId: v.string(),
+    /** Read events with seq >= startSeq (window very long sessions) */
+    startSeq: v.optional(v.number()),
+  },
+  returns: v.union(
+    v.object({
+      events: v.array(v.any()),
+      nextSeq: v.number(),
+      done: v.boolean(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    if (!args.sessionId.startsWith("wrun_")) return null;
+    // eve names the session event stream strm_<id>_user on the session run
+    const name = `${args.sessionId.replace("wrun_", "strm_")}_user`;
+    const streamId = `${args.sessionId}/${name}`;
+    const meta = await ctx.db
+      .query("streams")
+      .withIndex("by_streamId", (q) => q.eq("streamId", streamId))
+      .unique();
+    if (!meta) return null;
+    const start = args.startSeq ?? 0;
+    const rows = await ctx.db
+      .query("streamChunks")
+      .withIndex("by_stream", (q) =>
+        q.eq("streamId", streamId).gte("seq", start),
+      )
+      .order("asc")
+      .take(500);
+    const events: unknown[] = [];
+    let nextSeq = start;
+    for (const row of rows) {
+      const event = decodeSessionEventFrame(row.data);
+      if (event !== null) events.push(event);
+      nextSeq = row.seq + 1;
+    }
+    return { events, nextSeq, done: meta.done };
+  },
+});
+
 /** Dead / failing queue jobs for the ops panel. */
 export const queueHealth = query({
   args: {},

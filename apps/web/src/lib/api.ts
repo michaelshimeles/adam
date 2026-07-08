@@ -92,15 +92,40 @@ export const api = {
   ),
 };
 
+/** chat:send action result (packages/backend/convex/chat.ts). */
+export interface ChatSendResult {
+  ok: boolean;
+  status: number;
+  sessionId?: string;
+  continuationToken?: string;
+  error?: string;
+}
+
+/** One reactive page of decoded session stream events (ui:sessionEvents). */
+export interface SessionEventsPage {
+  events: unknown[];
+  nextSeq: number;
+  done: boolean;
+}
+
+export const chatApi = {
+  send: makeFunctionReference<
+    "action",
+    {
+      sessionId?: string;
+      message?: string;
+      inputResponses?: unknown[];
+      continuationToken?: string;
+    },
+    ChatSendResult
+  >("chat:send"),
+  sessionEvents: makeFunctionReference<
+    "query",
+    { sessionId: string; startSeq?: number },
+    SessionEventsPage | null
+  >("ui:sessionEvents"),
+};
+
 export const CONVEX_URL: string =
   (import.meta.env.VITE_CONVEX_URL as string | undefined) ??
   "http://127.0.0.1:3210";
-
-/**
- * Empty string targets same-origin `/eve/v1/*` routes — in dev the Vite proxy
- * forwards those to the local eve server. Set VITE_EVE_HOST to an absolute
- * origin (CORS required) when the dashboard is hosted elsewhere, e.g. on
- * Convex static hosting.
- */
-export const EVE_HOST: string =
-  (import.meta.env.VITE_EVE_HOST as string | undefined) ?? "";

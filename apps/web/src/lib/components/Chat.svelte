@@ -3,11 +3,12 @@
     EveDynamicToolPart,
     EveMessage,
     EveMessageInputRequest,
-  } from "eve/svelte";
-  import { useEveAgent } from "eve/svelte";
-  import { EVE_HOST } from "../api";
+  } from "eve/client";
+  import { createChatSession } from "../chat.svelte";
 
-  const agent = useEveAgent({ host: EVE_HOST });
+  // Convex-native chat: sends go through the chat:send action and the
+  // transcript is a reactive Convex query over the session's event stream.
+  const agent = createChatSession();
 
   let draft = $state("");
   let hitlText = $state<Record<string, string>>({});
@@ -239,7 +240,7 @@
 
   {#if agent.error}
     <div class="error-banner">
-      {agent.error.message}
+      {agent.error}
       <button onclick={() => agent.reset()}>new session</button>
     </div>
   {/if}
@@ -252,9 +253,7 @@
       rows="1"
     ></textarea>
     <div class="composer-actions">
-      {#if busy}
-        <button class="btn ghost" onclick={() => agent.stop()}>Stop</button>
-      {:else if messages.length > 0}
+      {#if !busy && messages.length > 0}
         <button class="btn ghost" onclick={() => agent.reset()}>New chat</button>
       {/if}
       <button
@@ -269,9 +268,10 @@
 
   <div class="statusline">
     <span class="status-{agent.status}">{agent.status}</span>
-    {#if agent.session.sessionId}
-      <span class="mono">session {agent.session.sessionId.slice(0, 16)}…</span>
+    {#if agent.sessionId}
+      <span class="mono">session {agent.sessionId.slice(0, 16)}…</span>
     {/if}
+    <span class="mono dim">runtime: convex node action</span>
   </div>
 </section>
 
@@ -682,6 +682,11 @@
 
   .statusline .mono {
     font-family: var(--mono);
+  }
+
+  .statusline .dim {
+    margin-left: auto;
+    opacity: 0.75;
   }
 
   .status-streaming {

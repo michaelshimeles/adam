@@ -1,12 +1,13 @@
 {
-  "name": "eve-convex",
+  "name": "adam",
   "private": true,
   "packageManager": "pnpm@10.15.1",
   "scripts": {
-    "build": "turbo run build",
+    "build": "turbo run build && pnpm --filter backend vendor:eve",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "vendor:eve": "pnpm --filter backend vendor:eve",
     "deploy:web": "pnpm --filter web build && pnpm --filter backend deploy:web"
   },
   "devDependencies": {

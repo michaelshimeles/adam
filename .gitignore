@@ -2,6 +2,7 @@ node_modules/
 dist/
 .turbo/
 .eve/
+.output/
 .workflow-data/
 .vercel/
 .env

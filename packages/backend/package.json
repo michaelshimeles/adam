@@ -6,6 +6,7 @@
  "scripts": {
   "dev": "convex dev",
   "typecheck": "tsc -p convex/tsconfig.json --noEmit",
+  "vendor:eve": "node scripts/vendor-eve.mjs",
   "deploy:web": "static-hosting upload --dist ../../apps/web/dist"
  },
   "dependencies": {
