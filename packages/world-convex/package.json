@@ -1,0 +1,31 @@
+{
+  "name": "world-convex",
+  "version": "0.1.0",
+  "description": "Convex-backed World for the Vercel Workflow SDK (storage, queue, streams on Convex)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@workflow/errors": "5.0.0-beta.9",
+    "@workflow/world": "5.0.0-beta.15",
+    "convex": "^1.42.1",
+    "ulid": "^3.0.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

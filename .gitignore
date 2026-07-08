@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.turbo/
+.eve/
+.workflow-data/
+.vercel/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store

@@ -1,0 +1,132 @@
+:root {
+  --bg: #0b0c10;
+  --bg-raise: #101218;
+  --panel: #12141c;
+  --panel-2: #171a24;
+  --border: #232735;
+  --border-soft: #1b1f2b;
+  --text: #e8eaf0;
+  --text-dim: #9aa1b2;
+  --text-faint: #626b80;
+  --accent: #ee5d3a;
+  --accent-2: #f3b01c;
+  --accent-soft: rgba(238, 93, 58, 0.14);
+  --green: #3fce8b;
+  --blue: #5aa7ff;
+  --amber: #f3b01c;
+  --red: #ff6270;
+  --gray: #7d8598;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(238, 93, 58, 0.07), transparent 60%),
+    radial-gradient(900px 400px at 10% -10%, rgba(90, 167, 255, 0.05), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #262b3a;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button {
+  font-family: inherit;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.pill.completed {
+  color: var(--green);
+  background: rgba(63, 206, 139, 0.1);
+  border-color: rgba(63, 206, 139, 0.25);
+}
+.pill.running {
+  color: var(--blue);
+  background: rgba(90, 167, 255, 0.1);
+  border-color: rgba(90, 167, 255, 0.25);
+}
+.pill.pending {
+  color: var(--amber);
+  background: rgba(243, 176, 28, 0.1);
+  border-color: rgba(243, 176, 28, 0.25);
+}
+.pill.failed {
+  color: var(--red);
+  background: rgba(255, 98, 112, 0.1);
+  border-color: rgba(255, 98, 112, 0.3);
+}
+.pill.cancelled {
+  color: var(--gray);
+  background: rgba(125, 133, 152, 0.1);
+  border-color: rgba(125, 133, 152, 0.25);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.pill.running .dot {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}

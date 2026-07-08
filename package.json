@@ -1,0 +1,16 @@
+{
+  "name": "eve-convex",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "deploy:web": "pnpm --filter web build && pnpm --filter backend deploy:web"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  }
+}
