@@ -73,7 +73,10 @@ server. One Convex deployment runs and stores everything:
 3. **Deliver** — the queue mutations (`world/queue.ts`) schedule a runner tick
    via `ctx.scheduler.runAfter(...)` whenever a job becomes due
    (`WORLD_EXECUTION_MODE=convex`). No polling, no pump. Crons requeue expired
-   leases and sweep anything a deploy interrupted.
+   leases and sweep anything a deploy interrupted. The runner also normalizes
+   queue names at delivery time (`__wkf_*` → `__<namespace>_wkf_*`), so an
+   enqueue that raced deployment startup before `WORKFLOW_QUEUE_NAMESPACE`
+   was visible can't strand a job.
 4. **Chat** — `convex/chat.ts` exposes `chat:send`, which invokes the bundled
    channel API (session create / message send / HITL responses) the same way
    the eve HTTP server would have. Session transcripts are world streams;
@@ -177,6 +180,23 @@ to that query and to `ui:streamText` for live tails.
 **Errors** — the backend throws structured `ConvexError`s
 (`{ worldError: { code, ... } }`) which the client maps back to typed
 `@workflow/errors` classes, so eve's retry/conflict semantics are preserved.
+
+## Queue ops
+
+Everything is observable in the dashboard (queue health chip) and the Convex
+dashboard's `queueJobs` table. Two internal mutations help when a job has
+dead-lettered (exhausted its 3 delivery attempts):
+
+```bash
+cd packages/backend
+npx convex run world/queue:reviveDead   # dead → pending with a fresh delivery budget
+npx convex run world/queue:purgeDead    # drop all dead jobs
+```
+
+`reviveDead` is always safe: workflows are event-sourced and replay
+deterministically, so re-delivering a job resumes exactly where the run left
+off (completed steps are not re-executed). A daily cron purges dead jobs
+older than 7 days either way.
 
 ## Deploying
 

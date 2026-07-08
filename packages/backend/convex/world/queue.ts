@@ -526,6 +526,34 @@ export const sweepDue = internalMutation({
   },
 });
 
+/** Ops: return dead jobs to pending (`npx convex run world/queue:reviveDead`).
+ * Fresh delivery budget; the runner re-executes them (workflows replay
+ * deterministically, so this is always safe). */
+export const reviveDead = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const dead = await ctx.db
+      .query("queueJobs")
+      .withIndex("by_state_runAfter", (q) => q.eq("state", "dead"))
+      .take(500);
+    for (const job of dead) {
+      await ctx.db.patch(job._id, {
+        state: "pending",
+        runAfter: now,
+        failCount: 0,
+        lastError: undefined,
+        updatedAt: now,
+      });
+    }
+    if (dead.length > 0) {
+      await scheduleRunnerTick(ctx, 0);
+    }
+    return dead.length;
+  },
+});
+
 /** Ops: drop ALL dead-letter jobs now (`npx convex run world/queue:purgeDead`). */
 export const purgeDead = internalMutation({
   args: {},

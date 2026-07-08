@@ -100,6 +100,22 @@ async function deliver(
       return;
     }
 
+    // Self-heal namespace-less enqueues. The enqueue side resolves
+    // WORKFLOW_QUEUE_NAMESPACE from process.env at call time, and on a cold
+    // deployment start (e.g. a cron catch-up firing before env injection
+    // settles) a job can land as __wkf_* instead of __<ns>_wkf_*. The
+    // handler only registers the namespaced queue, so deliver under the
+    // corrected name — this deployment runs exactly one agent.
+    let queueName = job.queueName;
+    const ns = process.env.WORKFLOW_QUEUE_NAMESPACE;
+    if (ns && queueName.startsWith("__wkf_")) {
+      queueName = `__${ns}_wkf_${queueName.slice("__wkf_".length)}`;
+      console.warn("[runner] normalized queue name", {
+        from: job.queueName,
+        to: queueName,
+      });
+    }
+
     const extraHeaders = job.headersJson
       ? (JSON.parse(job.headersJson) as Record<string, string>)
       : {};
@@ -110,7 +126,7 @@ async function deliver(
         headers: {
           ...extraHeaders,
           "content-type": "application/json",
-          "x-vqs-queue-name": job.queueName,
+          "x-vqs-queue-name": queueName,
           "x-vqs-message-id": job.messageId,
           "x-vqs-message-attempt": String(job.failCount + 1),
         },
