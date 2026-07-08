@@ -278,6 +278,7 @@
 
   h3 {
     margin: 0 0 10px;
+    font-family: var(--mono);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -307,9 +308,9 @@
   }
 
   .stream-tab.active {
-    color: var(--text);
-    border-color: var(--accent);
-    background: var(--accent-soft);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.4);
+    background: #17171c;
   }
 
   .stream-tab .count {
@@ -328,8 +329,8 @@
 
   .tail {
     margin: 0;
-    background: #0d0f15;
-    border: 1px solid var(--border-soft);
+    background: #08080a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-sm);
     padding: 12px 14px;
     font-family: var(--mono);
@@ -339,7 +340,7 @@
     word-break: break-word;
     max-height: 260px;
     overflow-y: auto;
-    color: #c7cdda;
+    color: #b9b9c2;
   }
 
   .tail-meta {

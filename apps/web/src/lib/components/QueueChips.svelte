@@ -36,10 +36,10 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 4px 11px;
+    padding: 4px 12px;
     border-radius: 999px;
-    background: var(--panel-2);
-    border: 1px solid var(--border-soft);
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     font-size: 11.5px;
   }
 
@@ -53,6 +53,7 @@
 
   .chip .v {
     color: var(--text);
+    font-family: var(--mono);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }

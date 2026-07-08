@@ -318,8 +318,10 @@
 
   .welcome h2 {
     margin: 0;
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: #fff;
   }
 
   .welcome p {
@@ -338,21 +340,23 @@
   }
 
   .suggestion {
-    background: var(--panel-2);
+    background: #0d0d10;
     color: var(--text-dim);
-    border: 1px solid var(--border-soft);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 999px;
     padding: 7px 14px;
     font-size: 12.5px;
     cursor: pointer;
     transition:
       color 120ms ease,
-      border-color 120ms ease;
+      border-color 120ms ease,
+      background 120ms ease;
   }
 
   .suggestion:hover {
     color: var(--text);
-    border-color: var(--accent);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: #101014;
   }
 
   .message {
@@ -387,7 +391,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--blue);
+    background: var(--green);
     animation: pulse 1.4s ease-in-out infinite;
   }
 
@@ -416,18 +420,15 @@
   }
 
   .message.assistant .text {
-    background: var(--panel-2);
-    border: 1px solid var(--border-soft);
+    background: #141419;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-top-left-radius: 4px;
   }
 
   .message.user .text {
-    background: linear-gradient(
-      135deg,
-      rgba(238, 93, 58, 0.18),
-      rgba(243, 176, 28, 0.12)
-    );
-    border: 1px solid rgba(238, 93, 58, 0.3);
+    background: #fff;
+    border: 1px solid #fff;
+    color: #0a0a0c;
     border-top-right-radius: 4px;
   }
 
@@ -453,9 +454,9 @@
   }
 
   .tool {
-    background: #0e1017;
-    border: 1px solid var(--border-soft);
-    border-radius: 10px;
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
     padding: 9px 12px;
     display: flex;
     flex-direction: column;
@@ -465,8 +466,8 @@
   }
 
   .tool[data-state="approval-requested"] {
-    border-color: rgba(243, 176, 28, 0.45);
-    box-shadow: 0 0 0 1px rgba(243, 176, 28, 0.12);
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
   }
 
   .tool-head {
@@ -479,8 +480,10 @@
   .tool-name {
     font-family: var(--mono);
     font-size: 12px;
-    font-weight: 600;
-    color: var(--accent-2);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #ededf0;
   }
 
   .tool-state {
@@ -495,7 +498,8 @@
     font-family: var(--mono);
     font-size: 11px;
     color: var(--text-dim);
-    background: rgba(255, 255, 255, 0.03);
+    background: #141419;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     padding: 6px 8px;
     border-radius: 6px;
     word-break: break-all;
@@ -531,20 +535,37 @@
   }
 
   .hitl-btn {
-    border-radius: 8px;
+    border-radius: 999px;
     padding: 6px 14px;
     font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
-    border: 1px solid var(--border);
-    background: var(--panel-2);
-    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: transparent;
+    color: #c8c8ce;
+    transition:
+      border-color 0.15s,
+      color 0.15s;
+  }
+
+  .hitl-btn:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
   }
 
   .hitl-btn.primary {
-    background: linear-gradient(135deg, var(--accent), #d94e2e);
-    border-color: transparent;
-    color: #fff;
+    background: #fff;
+    border-color: #fff;
+    color: #0a0a0c;
+    transition:
+      transform 0.12s,
+      box-shadow 0.12s;
+  }
+
+  .hitl-btn.primary:hover {
+    color: #0a0a0c;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.18);
   }
 
   .hitl-btn.danger {
@@ -553,8 +574,9 @@
     color: var(--red);
   }
 
-  .hitl-btn:hover {
-    filter: brightness(1.12);
+  .hitl-btn.danger:hover {
+    border-color: rgba(255, 98, 112, 0.7);
+    color: var(--red);
   }
 
   .hitl-freeform {
@@ -564,18 +586,18 @@
 
   .hitl-freeform input {
     flex: 1;
-    background: var(--panel-2);
-    border: 1px solid var(--border-soft);
-    border-radius: 8px;
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
     color: var(--text);
-    padding: 6px 10px;
+    padding: 6px 12px;
     font-size: 12.5px;
     font-family: inherit;
   }
 
   .hitl-freeform input:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .auth-link {
@@ -619,9 +641,9 @@
   textarea {
     flex: 1;
     resize: none;
-    background: var(--panel-2);
-    border: 1px solid var(--border-soft);
-    border-radius: 10px;
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
     color: var(--text);
     font-family: inherit;
     font-size: 13.5px;
@@ -629,12 +651,15 @@
     padding: 10px 13px;
     min-height: 42px;
     max-height: 140px;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
   }
 
   textarea:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: #101014;
   }
 
   .composer-actions {
@@ -643,8 +668,8 @@
   }
 
   .btn {
-    border-radius: 10px;
-    padding: 10px 18px;
+    border-radius: 999px;
+    padding: 10px 20px;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
@@ -652,8 +677,16 @@
   }
 
   .btn.primary {
-    background: linear-gradient(135deg, var(--accent), #d94e2e);
-    color: #fff;
+    background: #fff;
+    color: #0a0a0c;
+    transition:
+      transform 0.12s,
+      box-shadow 0.12s;
+  }
+
+  .btn.primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.18);
   }
 
   .btn.primary:disabled {
@@ -663,12 +696,16 @@
 
   .btn.ghost {
     background: transparent;
-    color: var(--text-dim);
-    border-color: var(--border);
+    color: #c8c8ce;
+    border-color: rgba(255, 255, 255, 0.16);
+    transition:
+      border-color 0.15s,
+      color 0.15s;
   }
 
   .btn.ghost:hover {
-    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
   }
 
   .statusline {
@@ -690,7 +727,7 @@
   }
 
   .status-streaming {
-    color: var(--blue);
+    color: var(--green);
   }
 
   .status-submitted {

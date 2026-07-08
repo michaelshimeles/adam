@@ -1,13 +1,13 @@
 :root {
-  --bg: #0b0c10;
-  --bg-raise: #101218;
-  --panel: #12141c;
-  --panel-2: #171a24;
-  --border: #232735;
-  --border-soft: #1b1f2b;
-  --text: #e8eaf0;
-  --text-dim: #9aa1b2;
-  --text-faint: #626b80;
+  --bg: #050506;
+  --bg-raise: #0a0a0d;
+  --panel: #0c0c0f;
+  --panel-2: #141419;
+  --border: rgba(255, 255, 255, 0.14);
+  --border-soft: rgba(255, 255, 255, 0.07);
+  --text: #ededf0;
+  --text-dim: #9a9aa4;
+  --text-faint: #6a6a74;
   --accent: #ee5d3a;
   --accent-2: #f3b01c;
   --accent-soft: rgba(238, 93, 58, 0.14);
@@ -16,8 +16,8 @@
   --amber: #f3b01c;
   --red: #ff6270;
   --gray: #7d8598;
-  --radius: 12px;
-  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-sm: 10px;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
     sans-serif;
@@ -36,8 +36,7 @@ body {
 
 body {
   background:
-    radial-gradient(1200px 500px at 70% -10%, rgba(238, 93, 58, 0.07), transparent 60%),
-    radial-gradient(900px 400px at 10% -10%, rgba(90, 167, 255, 0.05), transparent 60%),
+    radial-gradient(900px 480px at 50% -8%, rgba(255, 255, 255, 0.05), transparent 65%),
     var(--bg);
   color: var(--text);
   font-family: var(--sans);
@@ -57,7 +56,7 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #262b3a;
+  background: #2c2c33;
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;

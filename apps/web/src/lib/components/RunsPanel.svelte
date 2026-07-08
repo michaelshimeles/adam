@@ -53,7 +53,7 @@
     background: var(--panel);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
-    padding: 16px;
+    padding: 18px;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -69,9 +69,12 @@
 
   h2 {
     margin: 0;
-    font-size: 13px;
+    font-family: var(--mono);
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #ededf0;
   }
 
   .sub {
@@ -111,8 +114,8 @@
   }
 
   .run:hover {
-    border-color: var(--border);
-    background: #1a1e2a;
+    border-color: rgba(255, 255, 255, 0.18);
+    background: #17171c;
   }
 
   .row {
