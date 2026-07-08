@@ -9,6 +9,7 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "convex": "^1.42.1",
     "convex-svelte": "^0.14.0",
     "eve": "0.22.0"
