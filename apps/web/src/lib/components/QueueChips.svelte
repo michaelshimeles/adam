@@ -70,4 +70,15 @@
   .chip.dim .v {
     color: var(--text-faint);
   }
+
+  @media (max-width: 640px) {
+    .chips {
+      gap: 5px;
+    }
+
+    .chip {
+      padding: 4px 9px;
+      gap: 5px;
+    }
+  }
 </style>

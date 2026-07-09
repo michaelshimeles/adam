@@ -188,12 +188,46 @@
       overflow-y: auto;
     }
 
+    /* Stacked layout scrolls; give each panel a real height. */
+    main > :global(.chat) {
+      flex: none;
+      height: calc(100dvh - var(--nav-h) - 32px);
+      min-height: 420px;
+    }
+
     .rail {
       min-height: 500px;
     }
 
     .tagline {
       display: none;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .topbar {
+      padding: 0 14px;
+      gap: 10px;
+    }
+
+    /* Keep the brand to "▲ adam" so the chips fit. */
+    .slash,
+    .logo-eve,
+    .x,
+    .logo-convex {
+      display: none;
+    }
+
+    .topbar-right {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      row-gap: 4px;
+      min-width: 0;
+    }
+
+    main {
+      padding: 10px 12px 14px;
+      gap: 12px;
     }
   }
 </style>

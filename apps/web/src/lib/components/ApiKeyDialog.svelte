@@ -310,4 +310,28 @@
     line-height: 1.5;
     color: var(--text-faint);
   }
+
+  @media (max-width: 640px) {
+    .overlay {
+      padding: 14px;
+      align-items: flex-end;
+    }
+
+    .dialog {
+      padding: 22px 18px;
+      max-height: 85dvh;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+
+    input {
+      /* 16px stops iOS Safari from zooming the page on focus. */
+      font-size: 16px;
+    }
+
+    .actions .btn {
+      flex: 1;
+      padding: 11px 18px;
+    }
+  }
 </style>

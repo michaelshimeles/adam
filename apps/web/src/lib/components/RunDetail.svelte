@@ -425,4 +425,16 @@
     border-radius: 4px;
     font-size: 11px;
   }
+
+  @media (max-width: 640px) {
+    .drawer {
+      width: 100vw;
+      border-left: none;
+    }
+
+    .close {
+      width: 34px;
+      height: 34px;
+    }
+  }
 </style>

@@ -91,28 +91,6 @@
     ["Postgres + Redis", "one Convex deployment"],
   ];
 
-  const diagram = `┌──────────────────────────────────────────────────────────────────┐
-│  Convex deployment (packages/backend)                            │
-│                                                                  │
-│   chat:send ─────────► eve channel API ─┐                        │
-│   (action, "use node")                  │ enqueue                │
-│                                         ▼                        │
-│   world/queue ──ctx.scheduler──► runner/engine:tick              │
-│   (mutations)                    (action, "use node")            │
-│                                    │ imports vendored eve bundle │
-│                                    ▼                             │
-│                            workflow POST handler                 │
-│                            (agent loop, models, tools)           │
-│                                    │                             │
-│   world/runs · steps · events · hooks · streams ◄────────────────┤
-│   crons: lease reaper · sweep · heartbeat schedule               │
-│   notes (app data) · static hosting (this page)                  │
-└───────────────▲──────────────────────────────────────────────────┘
-                │ convex-svelte (one WebSocket, all live)
-        ┌───────┴──────────────────────────────────────┐
-        │  Svelte 5 dashboard (this site)              │
-        │  chat + HITL · notepad · runs/steps/streams  │
-        └──────────────────────────────────────────────┘`;
 </script>
 
 <div class="landing">
@@ -242,8 +220,89 @@
   <section class="arch" id="arch">
     <div class="section-head">
       <h3>Architecture</h3>
+      <p>How a chat message flows through the deployment and back to this page.</p>
     </div>
-    <pre class="diagram">{diagram}</pre>
+
+    <div class="arch-flow">
+      <div class="arch-box">
+        <div class="arch-label">Convex deployment · packages/backend</div>
+
+        <div class="flow-pair">
+          <div class="node">
+            <span class="node-name">chat:send</span>
+            <span class="node-sub">action · "use node"</span>
+          </div>
+          <span class="h-arrow" aria-hidden="true">
+            <span class="line"></span>
+          </span>
+          <div class="node">
+            <span class="node-name">eve channel API</span>
+            <span class="node-sub">bundled · in-process</span>
+          </div>
+        </div>
+
+        <div class="v-arrow" aria-hidden="true">
+          <span class="vline"></span>
+          <span class="lbl">enqueue</span>
+        </div>
+
+        <div class="flow-pair">
+          <div class="node">
+            <span class="node-name">world/queue</span>
+            <span class="node-sub">mutations</span>
+          </div>
+          <span class="h-arrow" aria-hidden="true">
+            <span class="lbl">ctx.scheduler</span>
+            <span class="line"></span>
+          </span>
+          <div class="node">
+            <span class="node-name">runner/engine:tick</span>
+            <span class="node-sub">action · "use node"</span>
+          </div>
+        </div>
+
+        <div class="v-arrow" aria-hidden="true">
+          <span class="vline"></span>
+          <span class="lbl">imports the vendored eve bundle</span>
+        </div>
+
+        <div class="node center">
+          <span class="node-name">workflow POST handler</span>
+          <span class="node-sub">agent loop · models · tools</span>
+        </div>
+
+        <div class="v-arrow" aria-hidden="true">
+          <span class="vline"></span>
+          <span class="lbl">durable writes</span>
+        </div>
+
+        <div class="node wide">
+          <div class="table-chips">
+            <code>world/runs</code>
+            <code>steps</code>
+            <code>events</code>
+            <code>hooks</code>
+            <code>streams</code>
+          </div>
+          <span class="node-sub">crons: lease reaper · sweep · heartbeat schedule</span>
+          <span class="node-sub">notes (app data) · static hosting (this page)</span>
+        </div>
+      </div>
+
+      <div class="ws-link">
+        <span class="vline up" aria-hidden="true"></span>
+        <span class="ws-pill">
+          <span class="ws-dot" aria-hidden="true"></span>
+          convex-svelte · one WebSocket · all live
+        </span>
+        <span class="vline down" aria-hidden="true"></span>
+      </div>
+
+      <div class="node client">
+        <span class="node-name">Svelte 5 dashboard — this site</span>
+        <span class="node-sub">chat + HITL · notepad · runs / steps / streams</span>
+      </div>
+    </div>
   </section>
 
   <section class="cta">
@@ -291,7 +350,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 26px;
+    min-height: var(--nav-h);
+    padding: 0 26px;
     background: rgba(5, 5, 6, 0.72);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -714,17 +774,213 @@
 
   /* architecture */
 
-  .diagram {
-    margin: 0;
-    overflow-x: auto;
+  .arch-flow {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  .arch-box {
     background: #08080a;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
-    padding: 22px 24px;
+    padding: 20px;
+  }
+
+  .arch-label {
     font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.5;
-    color: #b9b9c2;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a8a94;
+    margin-bottom: 16px;
+  }
+
+  .node {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: #101014;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 10px 14px;
+    min-width: 0;
+  }
+
+  .node-name {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #ededf0;
+    overflow-wrap: break-word;
+  }
+
+  .node-sub {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #6a6a74;
+    overflow-wrap: break-word;
+  }
+
+  .node.center {
+    width: fit-content;
+    margin: 0 auto;
+    align-items: center;
+    text-align: center;
+    padding: 10px 22px;
+  }
+
+  .table-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .table-chips code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #d8d8de;
+    background: #17171c;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 2px 8px;
+  }
+
+  .flow-pair {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .h-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    min-width: 110px;
+  }
+
+  .h-arrow .lbl,
+  .v-arrow .lbl {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #6a6a74;
+    white-space: nowrap;
+  }
+
+  .h-arrow .line {
+    position: relative;
+    width: 100%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .h-arrow .line::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: -3px;
+    border-left: 6px solid rgba(255, 255, 255, 0.4);
+    border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+  }
+
+  .v-arrow {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    height: 40px;
+    padding: 3px 0;
+  }
+
+  .v-arrow .vline {
+    position: relative;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .v-arrow .vline::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: -3px;
+    border-top: 6px solid rgba(255, 255, 255, 0.4);
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+  }
+
+  .v-arrow .lbl {
+    position: absolute;
+    left: calc(50% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .ws-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+  }
+
+  .ws-link .vline {
+    position: relative;
+    width: 1px;
+    height: 20px;
+    background: rgba(63, 206, 139, 0.45);
+  }
+
+  .ws-link .vline.up::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -3px;
+    border-bottom: 6px solid rgba(63, 206, 139, 0.8);
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+  }
+
+  .ws-link .vline.down::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: -3px;
+    border-top: 6px solid rgba(63, 206, 139, 0.8);
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+  }
+
+  .ws-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(63, 206, 139, 0.22);
+    background: rgba(63, 206, 139, 0.05);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: #9fb3a8;
+  }
+
+  .ws-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 1.6s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  .node.client {
+    width: fit-content;
+    margin: 0 auto;
+    align-items: center;
+    text-align: center;
+    padding: 12px 22px;
   }
 
   /* cta + footer */
@@ -781,12 +1037,102 @@
       display: none;
     }
 
+    .nav {
+      padding: 0 16px;
+    }
+
     .hero {
-      padding-top: 56px;
+      padding: 56px 16px 64px;
     }
 
     section {
-      padding: 52px 20px;
+      padding: 52px 18px;
+    }
+
+    .cmd {
+      max-width: 100%;
+      font-size: 12px;
+      padding: 11px 16px;
+      gap: 9px;
+    }
+
+    .cmd-text {
+      overflow-wrap: anywhere;
+      text-align: left;
+    }
+
+    .live-strip {
+      max-width: 100%;
+      font-size: 11.5px;
+      line-height: 1.5;
+      border-radius: 16px;
+      padding: 8px 14px;
+    }
+
+    .arch-box {
+      padding: 14px 12px;
+    }
+
+    .cta-row {
+      flex-direction: column;
+      align-items: stretch;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+
+    .btn-white.lg,
+    .btn-ghost.lg {
+      text-align: center;
+    }
+
+    .flow-pair {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    .h-arrow {
+      flex-direction: row-reverse;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      height: 40px;
+      padding: 5px 0;
+    }
+
+    .h-arrow .line {
+      width: 1px;
+      height: 100%;
+    }
+
+    .h-arrow .line::after {
+      right: auto;
+      top: auto;
+      bottom: 0;
+      left: -3px;
+      border-bottom: 0;
+      border-left: 3.5px solid transparent;
+      border-right: 3.5px solid transparent;
+      border-top: 6px solid rgba(255, 255, 255, 0.4);
+    }
+
+    .v-arrow {
+      flex-direction: column-reverse;
+      align-items: center;
+      height: auto;
+      gap: 5px;
+    }
+
+    .v-arrow .vline {
+      height: 22px;
+    }
+
+    .v-arrow .lbl {
+      position: static;
+      transform: none;
+      white-space: normal;
+      text-align: center;
+      max-width: 90%;
     }
   }
 </style>

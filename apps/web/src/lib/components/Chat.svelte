@@ -737,4 +737,38 @@
   .status-error {
     color: var(--red);
   }
+
+  @media (max-width: 640px) {
+    .messages {
+      padding: 14px;
+      gap: 14px;
+    }
+
+    .message {
+      max-width: 94%;
+    }
+
+    .composer {
+      padding: 10px 12px 8px;
+      gap: 8px;
+    }
+
+    textarea {
+      /* 16px stops iOS Safari from zooming the page on focus. */
+      font-size: 16px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+    }
+
+    .statusline {
+      padding: 0 12px 8px;
+      gap: 10px;
+    }
+
+    .statusline .mono:not(.dim) {
+      display: none;
+    }
+  }
 </style>
