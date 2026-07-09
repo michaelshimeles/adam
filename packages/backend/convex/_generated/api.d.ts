@@ -11,6 +11,7 @@
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
+import type * as keys from "../keys.js";
 import type * as lib_attrs from "../lib/attrs.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_errors from "../lib/errors.js";
@@ -21,6 +22,7 @@ import type * as lib_worldStore from "../lib/worldStore.js";
 import type * as notes from "../notes.js";
 import type * as runner_bundle from "../runner/bundle.js";
 import type * as runner_engine from "../runner/engine.js";
+import type * as runner_gatewayKeyLock from "../runner/gatewayKeyLock.js";
 import type * as runner_probe from "../runner/probe.js";
 import type * as runner_schedule from "../runner/schedule.js";
 import type * as staticHosting from "../staticHosting.js";
@@ -42,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   chat: typeof chat;
   crons: typeof crons;
   http: typeof http;
+  keys: typeof keys;
   "lib/attrs": typeof lib_attrs;
   "lib/auth": typeof lib_auth;
   "lib/errors": typeof lib_errors;
@@ -52,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   notes: typeof notes;
   "runner/bundle": typeof runner_bundle;
   "runner/engine": typeof runner_engine;
+  "runner/gatewayKeyLock": typeof runner_gatewayKeyLock;
   "runner/probe": typeof runner_probe;
   "runner/schedule": typeof runner_schedule;
   staticHosting: typeof staticHosting;

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { loadEveBundle, type EveBundle } from "./bundle";
+import { OWNER, withGatewayKey } from "./gatewayKeyLock";
 
 /**
  * The in-Convex workflow executor. This replaces the eve host's queue pump:
@@ -22,6 +23,16 @@ import { loadEveBundle, type EveBundle } from "./bundle";
  * dies (deploy, crash, 10-minute action limit), the lease expires and the
  * cron requeues the job — the workflow replays deterministically from its
  * event log, which is exactly the crash-recovery story eve has on any host.
+ *
+ * BYOK: the bundled runtime resolves model credentials from
+ * process.env.AI_GATEWAY_API_KEY at request time. Each flow job's runId is
+ * a session id; the sessionKeys table says whose gateway key that session
+ * runs on. Since env is process-global, jobs are grouped by key and each
+ * group delivered inside withGatewayKey (a process-wide mutex) — two
+ * visitors' keys never coexist during delivery, and no concurrent action's
+ * key cleanup can clobber an in-flight delivery. `system` sessions
+ * (heartbeat schedules) and queue health checks run on the deployment's
+ * own credentials.
  */
 
 const LEASE_MS = 2 * 60 * 1000;
@@ -30,6 +41,10 @@ const FAIL_BACKOFF_MS = 5_000;
 const CLAIM_BATCH = 4;
 /** Leave headroom under the 10-minute node action ceiling. */
 const MAX_WALL_MS = 8 * 60 * 1000;
+/** Key row not there yet (chat:send commits it right after the enqueue). */
+const KEY_WAIT_RETRY_MS = 500;
+/** Give up on a job whose session never registered a key. */
+const KEY_WAIT_MAX_MS = 90_000;
 
 type ClaimedJob = {
   jobId: import("../_generated/dataModel").Id<"queueJobs">;
@@ -41,7 +56,94 @@ type ClaimedJob = {
   attempt: number;
   failCount: number;
   maxFails: number;
+  createdAt: number;
 };
+
+type JobKeyRef = {
+  runId: string;
+  /** `$eve.root` — the session run this job's run belongs to, if a child. */
+  root?: string;
+};
+
+/** Flow payloads carry the run id (+ session root attribute); health checks don't. */
+function keyRefOf(job: ClaimedJob): JobKeyRef | null {
+  try {
+    const payload = JSON.parse(job.payloadJson) as {
+      runId?: unknown;
+      runInput?: { attributes?: Record<string, unknown> };
+    };
+    if (typeof payload.runId !== "string") return null;
+    const root = payload.runInput?.attributes?.["$eve.root"];
+    return {
+      runId: payload.runId,
+      ...(typeof root === "string" ? { root } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sort claimed jobs into delivery buckets by gateway key. Jobs whose session
+ * has no key row yet are released (or failed once they're old enough) and
+ * excluded from delivery.
+ */
+async function partitionByKey(
+  ctx: ActionCtx,
+  workerId: string,
+  jobs: ClaimedJob[],
+): Promise<Map<string | typeof OWNER, ClaimedJob[]>> {
+  const refs = new Map<string, JobKeyRef>();
+  for (const job of jobs) {
+    const ref = keyRefOf(job);
+    if (ref) refs.set(ref.runId, ref);
+  }
+  const rows =
+    refs.size > 0
+      ? await ctx.runQuery(internal.keys.resolveMany, {
+          jobs: [...refs.values()],
+        })
+      : [];
+  const keyByRun = new Map(rows.map((row) => [row.runId, row]));
+
+  const buckets = new Map<string | typeof OWNER, ClaimedJob[]>();
+  const push = (key: string | typeof OWNER, job: ClaimedJob) => {
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(job);
+    else buckets.set(key, [job]);
+  };
+
+  for (const job of jobs) {
+    const ref = keyRefOf(job);
+    if (ref === null) {
+      // Queue health check — no model calls involved.
+      push(OWNER, job);
+      continue;
+    }
+    const row = keyByRun.get(ref.runId);
+    if (!row) {
+      if (Date.now() - job.createdAt > KEY_WAIT_MAX_MS) {
+        await ctx.runMutation(internal.world.queue.runnerFail, {
+          jobId: job.jobId,
+          workerId,
+          error:
+            "no API key registered for this session (BYOK row never appeared)",
+          backoffMs: FAIL_BACKOFF_MS,
+        });
+      } else {
+        await ctx.runMutation(internal.world.queue.runnerRelease, {
+          jobId: job.jobId,
+          workerId,
+          delayMs: KEY_WAIT_RETRY_MS,
+        });
+      }
+      continue;
+    }
+    if (row.system || row.apiKey === undefined) push(OWNER, job);
+    else push(row.apiKey, job);
+  }
+  return buckets;
+}
 
 export const tick = internalAction({
   args: {},
@@ -59,7 +161,18 @@ export const tick = internalAction({
         leaseMs: LEASE_MS,
       })) as ClaimedJob[];
       if (jobs.length === 0) break;
-      await Promise.all(jobs.map((job) => deliver(ctx, bundle, workerId, job)));
+
+      const buckets = await partitionByKey(ctx, workerId, jobs);
+      if (buckets.size === 0) {
+        // Everything was released waiting on its key; the releases already
+        // scheduled a follow-up tick, so don't spin on the same jobs here.
+        break;
+      }
+      for (const [key, bucket] of buckets) {
+        await withGatewayKey(key, () =>
+          Promise.all(bucket.map((job) => deliver(ctx, bundle, workerId, job))),
+        );
+      }
     }
 
     // Any stream writes the handler awaited have flushed; this covers

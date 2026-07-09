@@ -37,4 +37,12 @@ crons.daily(
   {},
 );
 
+// Drop stale BYOK session keys so visitor credentials don't accumulate.
+crons.daily(
+  "cleanup stale session keys",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.keys.cleanup,
+  {},
+);
+
 export default crons;

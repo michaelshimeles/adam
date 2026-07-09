@@ -127,6 +127,8 @@ npx convex env set AI_GATEWAY_API_KEY <your-key>
 # ...or a Vercel OIDC token (expires ~12h; fine for a quick demo):
 #   cd apps/agent && npx vercel link && npx vercel env pull
 #   npx convex env set VERCEL_OIDC_TOKEN <token from apps/agent/.env>
+# NOTE: this deployment key only pays for the hourly heartbeat schedule.
+# Dashboard chats are BYOK: each visitor enters their own gateway key.
 ```
 
 **4. Start the dashboard** (terminal 3):
@@ -258,9 +260,13 @@ re-vendors the eve bundle.
   `npx eve dev` in `apps/agent` and the system reverts to eve-as-external-host
   with the world-convex pump delivering jobs over HTTP. Don't run both at
   once — they'd race for the same queue.
-- **Auth**: the world functions are protected by a shared service secret.
-  `chat:send` and the `ui:*` / `notes:list` queries are public for demo
-  purposes — add `ctx.auth` before shipping anything real.
+- **Auth & BYOK**: the world functions are protected by a shared service
+  secret. `chat:send` is public but requires the caller's own Vercel AI
+  Gateway key (`apiKey` arg) — the dashboard prompts for it and the runner
+  injects it per session (`sessionKeys` table), so visitors spend their own
+  model credits, not the deployment's. Only the hourly heartbeat schedule
+  runs on the deployment's `AI_GATEWAY_API_KEY`. The `ui:*` / `notes:list`
+  queries remain public reads — add `ctx.auth` before shipping anything real.
 - **Payload privacy**: run/step payloads are stored as TypedJSON text and are
   not exposed through the public UI queries; only stream chunks (the agent's
   user-facing output) are readable.

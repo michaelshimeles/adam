@@ -171,7 +171,7 @@ export const wake = query({
 // claim / heartbeat
 // ---------------------------------------------------------------------------
 
-const claimedJobValidator = v.object({
+const claimedJobFields = {
   jobId: v.id("queueJobs"),
   queueName: v.string(),
   queuePrefix: v.string(),
@@ -183,6 +183,15 @@ const claimedJobValidator = v.object({
   attempt: v.number(),
   failCount: v.number(),
   maxFails: v.number(),
+};
+
+/** Wire shape the external world-convex pump zod-parses — no extra fields. */
+const claimedJobValidator = v.object(claimedJobFields);
+
+/** The in-Convex runner also gets createdAt (drives the BYOK key-wait cap). */
+const runnerClaimedJobValidator = v.object({
+  ...claimedJobFields,
+  createdAt: v.number(),
 });
 
 type ClaimArgs = { workerId: string; now: number; max: number; leaseMs: number };
@@ -219,6 +228,7 @@ async function claimImpl(ctx: MutationCtx, args: ClaimArgs) {
       attempt: job.attempt + 1,
       failCount: job.failCount,
       maxFails: job.maxFails,
+      createdAt: job.createdAt,
     });
   }
   return claimed;
@@ -235,7 +245,10 @@ export const claim = mutation({
   returns: v.array(claimedJobValidator),
   handler: async (ctx, args) => {
     requireServiceSecret(args.secret);
-    return await claimImpl(ctx, args);
+    // Strip createdAt: the pump's ClaimedJob zod schema doesn't know it.
+    return (await claimImpl(ctx, args)).map(
+      ({ createdAt: _createdAt, ...job }) => job,
+    );
   },
 });
 
@@ -246,7 +259,7 @@ export const runnerClaim = internalMutation({
     max: v.number(),
     leaseMs: v.number(),
   },
-  returns: v.array(claimedJobValidator),
+  returns: v.array(runnerClaimedJobValidator),
   handler: async (ctx, args) => claimImpl(ctx, args),
 });
 
@@ -407,6 +420,17 @@ export const release = mutation({
     requireServiceSecret(args.secret);
     return await releaseImpl(ctx, args);
   },
+});
+
+/**
+ * Runner path: hand a claimed job back without consuming a delivery attempt.
+ * Used when a session's BYOK key row hasn't committed yet (chat:send writes
+ * it moments after the enqueue) — the job wasn't delivered at all.
+ */
+export const runnerRelease = internalMutation({
+  args: { jobId: v.id("queueJobs"), workerId: v.string(), delayMs: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => releaseImpl(ctx, args),
 });
 
 async function failImpl(

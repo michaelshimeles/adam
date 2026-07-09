@@ -197,4 +197,21 @@ export default defineSchema({
     author: v.string(),
     createdAt: v.number(),
   }),
+
+  /**
+   * BYOK: visitor-supplied AI Gateway keys, keyed by session run id
+   * (sessionId === the session workflow's runId). The runner injects the
+   * session's key before delivering its jobs, so public visitors spend
+   * their own gateway credits. `system: true` rows (heartbeat schedule
+   * sessions) use the deployment's own credentials instead.
+   */
+  sessionKeys: defineTable({
+    sessionId: v.string(),
+    apiKey: v.optional(v.string()),
+    system: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_updatedAt", ["updatedAt"]),
 });

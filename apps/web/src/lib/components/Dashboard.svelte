@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { gatewayKey } from "../apiKey.svelte";
+  import ApiKeyDialog from "./ApiKeyDialog.svelte";
   import Chat from "./Chat.svelte";
   import NotesPanel from "./NotesPanel.svelte";
   import QueueChips from "./QueueChips.svelte";
@@ -6,6 +8,10 @@
   import RunsPanel from "./RunsPanel.svelte";
 
   let selectedRunId = $state<string | null>(null);
+  let keyDialogOpen = $state(false);
+
+  // BYOK gate: no gateway key yet → the dialog blocks the dashboard.
+  const keyRequired = $derived(gatewayKey.value === null);
 </script>
 
 <div class="dashboard">
@@ -19,7 +25,17 @@
       <span class="logo-convex">convex</span>
       <span class="tagline">durable agents · reactive backend</span>
     </a>
-    <QueueChips />
+    <div class="topbar-right">
+      <QueueChips />
+      <button
+        class="key-chip"
+        title="Your AI Gateway key — chats spend your own credits"
+        onclick={() => (keyDialogOpen = true)}
+      >
+        <span class="k">key</span>
+        <span class="v">{gatewayKey.hint ? `…${gatewayKey.hint}` : "none"}</span>
+      </button>
+    </div>
   </header>
 
   <main>
@@ -32,6 +48,13 @@
 
   {#if selectedRunId !== null}
     <RunDetail runId={selectedRunId} onClose={() => (selectedRunId = null)} />
+  {/if}
+
+  {#if keyRequired || keyDialogOpen}
+    <ApiKeyDialog
+      required={keyRequired}
+      onClose={() => (keyDialogOpen = false)}
+    />
   {/if}
 </div>
 
@@ -48,7 +71,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 14px 26px;
+    min-height: var(--nav-h);
+    padding: 0 26px;
     background: rgba(5, 5, 6, 0.72);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -102,6 +126,44 @@
     color: var(--text-faint);
     font-size: 11.5px;
     letter-spacing: 0.03em;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .key-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 11.5px;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .key-chip:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .key-chip .k {
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .key-chip .v {
+    color: var(--text);
+    font-family: var(--mono);
+    font-weight: 700;
   }
 
   main {

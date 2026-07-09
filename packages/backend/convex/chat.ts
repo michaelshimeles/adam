@@ -1,8 +1,10 @@
 "use node";
 
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import { loadEveBundle, type EveRouteEvent } from "./runner/bundle";
+import { withGatewayKey } from "./runner/gatewayKeyLock";
 
 /**
  * Chat entry point for the web UI — the Convex-native replacement for the
@@ -15,9 +17,11 @@ import { loadEveBundle, type EveRouteEvent } from "./runner/bundle";
  * response returns immediately with the session id; the UI watches the
  * session's event stream reactively via ui:sessionEvents.
  *
- * NOTE: like the rest of this demo deployment there is no end-user auth;
- * anyone with the deployment URL can talk to the agent. Add ctx.auth checks
- * before exposing this beyond a demo.
+ * BYOK: the deployment is public, so every send must carry the caller's own
+ * AI Gateway key. The key is recorded against the session's run id (keys
+ * table) and runner/engine:tick injects it before executing that session's
+ * jobs — model calls spend the visitor's credits, not the deployment's.
+ * There is still no end-user auth beyond that; transcripts are demo-public.
  */
 
 const sendResult = v.object({
@@ -30,6 +34,8 @@ const sendResult = v.object({
 
 export const send = action({
   args: {
+    /** The caller's Vercel AI Gateway key — pays for this session's turns. */
+    apiKey: v.string(),
     /** Omit for a new session; pass the previous sessionId to continue. */
     sessionId: v.optional(v.string()),
     message: v.optional(v.string()),
@@ -38,8 +44,26 @@ export const send = action({
     continuationToken: v.optional(v.string()),
   },
   returns: sendResult,
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    const apiKey = args.apiKey.trim();
+    if (!apiKey) {
+      return {
+        ok: false,
+        status: 400,
+        error: "An AI Gateway API key is required to chat.",
+      };
+    }
+
     const { bundle } = await loadEveBundle();
+
+    // Continuing a session: persist the key before the turn enqueues so the
+    // runner can never claim the job first and find no key.
+    if (args.sessionId) {
+      await ctx.runMutation(internal.keys.put, {
+        sessionId: args.sessionId,
+        apiKey,
+      });
+    }
 
     const body: Record<string, unknown> = {};
     if (args.message !== undefined) body.message = args.message;
@@ -76,38 +100,51 @@ export const send = action({
       },
     };
 
-    const response = await bundle.dispatchChannelRequest(event, routeKey, {
-      dev: false,
+    // Cover any model use inside the channel dispatch itself with the
+    // caller's key. withGatewayKey serializes gateway-key env access
+    // process-wide, so this can neither clobber nor be clobbered by a
+    // concurrent runner delivery's injected key.
+    return await withGatewayKey(apiKey, async () => {
+      const response = await bundle.dispatchChannelRequest(event, routeKey, {
+        dev: false,
+      });
+      const text = await response.text();
+      let json: Record<string, unknown> = {};
+      try {
+        json = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        // non-JSON error body; surfaced via `error` below
+      }
+
+      const sessionId =
+        (typeof json.sessionId === "string" ? json.sessionId : undefined) ??
+        response.headers.get("x-eve-session-id") ??
+        undefined;
+
+      // New session: the first turn's job is already enqueued, so record the
+      // key immediately. The runner briefly releases jobs whose key hasn't
+      // landed yet (see runner/engine.ts), which closes the race window.
+      if (!args.sessionId && sessionId) {
+        await ctx.runMutation(internal.keys.put, { sessionId, apiKey });
+      }
+
+      // Channel handlers may defer work via waitUntil; a Convex action must
+      // not return while that work is still running.
+      await Promise.allSettled(background);
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        sessionId,
+        continuationToken:
+          typeof json.continuationToken === "string"
+            ? json.continuationToken
+            : undefined,
+        error: response.ok
+          ? undefined
+          : ((typeof json.error === "string" ? json.error : undefined) ??
+            text.slice(0, 500)),
+      };
     });
-    const text = await response.text();
-    let json: Record<string, unknown> = {};
-    try {
-      json = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      // non-JSON error body; surfaced via `error` below
-    }
-
-    // Channel handlers may defer work via waitUntil; a Convex action must
-    // not return while that work is still running.
-    await Promise.allSettled(background);
-
-    const sessionId =
-      (typeof json.sessionId === "string" ? json.sessionId : undefined) ??
-      response.headers.get("x-eve-session-id") ??
-      undefined;
-
-    return {
-      ok: response.ok,
-      status: response.status,
-      sessionId,
-      continuationToken:
-        typeof json.continuationToken === "string"
-          ? json.continuationToken
-          : undefined,
-      error: response.ok
-        ? undefined
-        : ((typeof json.error === "string" ? json.error : undefined) ??
-          text.slice(0, 500)),
-    };
   },
 });

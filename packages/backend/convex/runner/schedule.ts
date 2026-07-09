@@ -1,6 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import { loadEveBundle } from "./bundle";
 
@@ -19,12 +20,18 @@ function scheduleTaskName(schedulePath: string): string {
 export const heartbeat = internalAction({
   args: {},
   returns: v.object({ sessionIds: v.array(v.string()) }),
-  handler: async () => {
+  handler: async (ctx) => {
     const { bundle } = await loadEveBundle();
     const result = (await bundle.dispatchScheduleTask(
       scheduleTaskName("schedules/heartbeat.md"),
       { dev: false },
     )) as { scheduleId: string; sessionIds: string[] };
+    // BYOK: schedule sessions are deployment-initiated — mark them so the
+    // runner executes them on the deployment's own gateway key instead of
+    // holding them for a visitor key that will never arrive.
+    for (const sessionId of result.sessionIds) {
+      await ctx.runMutation(internal.keys.markSystem, { sessionId });
+    }
     return { sessionIds: result.sessionIds };
   },
 });

@@ -9,6 +9,7 @@ import {
 } from "eve/client";
 import { onDestroy } from "svelte";
 import { chatApi, type SessionEventsPage } from "./api";
+import { gatewayKey } from "./apiKey.svelte";
 
 /**
  * Convex-native replacement for eve's useEveAgent hook.
@@ -196,6 +197,13 @@ export function createChatSession() {
     inputResponses?: InputResponse[];
   }): Promise<void> {
     if (sendInFlight) return;
+    // BYOK: the send action requires the visitor's gateway key. The
+    // dashboard's key dialog normally guarantees this exists.
+    const apiKey = gatewayKey.value;
+    if (!apiKey) {
+      errorMessage = "Add your AI Gateway API key (topbar) to chat.";
+      return;
+    }
     errorMessage = null;
     const submissionId = crypto.randomUUID();
     if (input.message !== undefined) {
@@ -223,6 +231,7 @@ export function createChatSession() {
     sendInFlight = true;
     try {
       const result = await client.action(chatApi.send, {
+        apiKey,
         ...(sessionId ? { sessionId } : {}),
         ...(input.message !== undefined ? { message: input.message } : {}),
         ...(input.inputResponses && input.inputResponses.length > 0

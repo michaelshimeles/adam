@@ -112,6 +112,8 @@ export const chatApi = {
   send: makeFunctionReference<
     "action",
     {
+      /** BYOK: the visitor's AI Gateway key, spent on their own turns. */
+      apiKey: string;
       sessionId?: string;
       message?: string;
       inputResponses?: unknown[];
@@ -124,6 +126,22 @@ export const chatApi = {
     { sessionId: string; startSeq?: number },
     SessionEventsPage | null
   >("ui:sessionEvents"),
+};
+
+/** keys:validate action result (packages/backend/convex/keys.ts). */
+export interface KeyValidationResult {
+  ok: boolean;
+  /** Remaining gateway credit balance, when the gateway reports one. */
+  balance?: string;
+  error?: string;
+}
+
+export const keysApi = {
+  validate: makeFunctionReference<
+    "action",
+    { apiKey: string },
+    KeyValidationResult
+  >("keys:validate"),
 };
 
 export const CONVEX_URL: string =

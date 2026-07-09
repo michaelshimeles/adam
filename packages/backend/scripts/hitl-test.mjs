@@ -10,6 +10,13 @@ const url = process.env.CONVEX_URL ?? "http://127.0.0.1:3210";
 const secret = process.env.WORLD_SERVICE_SECRET ?? "dev-world-secret";
 const client = new ConvexHttpClient(url);
 
+// chat:send is BYOK: every send carries the caller's own AI Gateway key.
+const apiKey = process.env.AI_GATEWAY_API_KEY;
+if (!apiKey) {
+  console.error("Set AI_GATEWAY_API_KEY — chat:send requires a gateway key.");
+  process.exit(1);
+}
+
 const deadline = Date.now() + 180_000;
 const remaining = () => deadline - Date.now();
 
@@ -22,6 +29,7 @@ console.log("seeded 1 note; notes before:", (await client.query("notes:list", {}
 
 console.log("→ chat:send 'Clear the notepad'");
 const first = await client.action("chat:send", {
+  apiKey,
   message: "Clear the notepad, please.",
 });
 console.log("←", JSON.stringify(first));
@@ -61,6 +69,7 @@ while (remaining() > 0) {
             option ? `optionId=${option.id}` : "text=yes",
           );
           const res = await client.action("chat:send", {
+            apiKey,
             sessionId,
             continuationToken,
             inputResponses: [
