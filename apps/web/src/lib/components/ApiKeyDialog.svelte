@@ -39,13 +39,6 @@
     }
   }
 
-  function saveUnchecked() {
-    const apiKey = draft.trim();
-    if (!apiKey) return;
-    gatewayKey.set(apiKey);
-    onClose();
-  }
-
   function removeKey() {
     gatewayKey.clear();
     draft = "";
@@ -107,14 +100,6 @@
           disabled={checking || draft.trim().length === 0}
         >
           {checking ? "Checking…" : "Validate & enter"}
-        </button>
-        <button
-          type="button"
-          class="btn ghost"
-          disabled={checking || draft.trim().length === 0}
-          onclick={saveUnchecked}
-        >
-          Use without validating
         </button>
         {#if !required}
           <button type="button" class="btn ghost" onclick={onClose}>
