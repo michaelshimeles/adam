@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { modelProviderValidator } from "./lib/modelKeys";
 
 /**
  * Convex schema backing a Vercel Workflow SDK "World" (used by eve).
@@ -199,15 +200,17 @@ export default defineSchema({
   }),
 
   /**
-   * BYOK: visitor-supplied AI Gateway keys, keyed by session run id
-   * (sessionId === the session workflow's runId). The runner injects the
-   * session's key before delivering its jobs, so public visitors spend
-   * their own gateway credits. `system: true` rows (heartbeat schedule
-   * sessions) use the deployment's own credentials instead.
+   * BYOK: visitor-supplied model API keys (Vercel AI Gateway or OpenRouter),
+   * keyed by session run id (sessionId === the session workflow's runId).
+   * The runner injects the session's key before delivering its jobs, so
+   * public visitors spend their own credits. `system: true` rows (heartbeat
+   * schedule sessions) use the deployment's own credentials instead.
+   * Rows without `provider` predate OpenRouter support and mean "gateway".
    */
   sessionKeys: defineTable({
     sessionId: v.string(),
     apiKey: v.optional(v.string()),
+    provider: v.optional(modelProviderValidator),
     system: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { gatewayKey } from "../apiKey.svelte";
+  import { modelKey } from "../apiKey.svelte";
   import ApiKeyDialog from "./ApiKeyDialog.svelte";
   import Chat from "./Chat.svelte";
   import NotesPanel from "./NotesPanel.svelte";
@@ -10,8 +10,8 @@
   let selectedRunId = $state<string | null>(null);
   let keyDialogOpen = $state(false);
 
-  // BYOK gate: no gateway key yet → the dialog blocks the dashboard.
-  const keyRequired = $derived(gatewayKey.value === null);
+  // BYOK gate: no key yet → the dialog blocks the dashboard.
+  const keyRequired = $derived(modelKey.value === null);
 </script>
 
 <div class="dashboard">
@@ -29,11 +29,19 @@
       <QueueChips />
       <button
         class="key-chip"
-        title="Your AI Gateway key — chats spend your own credits"
+        title={modelKey.providerLabel
+          ? `Your ${modelKey.providerLabel} key — chats spend your own credits`
+          : "Your API key — chats spend your own credits"}
         onclick={() => (keyDialogOpen = true)}
       >
         <span class="k">key</span>
-        <span class="v">{gatewayKey.hint ? `…${gatewayKey.hint}` : "none"}</span>
+        <span class="v">
+          {#if modelKey.hint}
+            {modelKey.provider === "openrouter" ? "or" : "gw"} …{modelKey.hint}
+          {:else}
+            none
+          {/if}
+        </span>
       </button>
     </div>
   </header>

@@ -6,10 +6,14 @@ import { ConvexHttpClient } from "convex/browser";
 const url = process.env.CONVEX_URL ?? "http://127.0.0.1:3210";
 const client = new ConvexHttpClient(url);
 
-// chat:send is BYOK: every send carries the caller's own AI Gateway key.
-const apiKey = process.env.AI_GATEWAY_API_KEY;
+// chat:send is BYOK: every send carries the caller's own key — a Vercel AI
+// Gateway key or an OpenRouter key (gateway wins when both are set).
+const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.OPENROUTER_API_KEY;
+const provider = process.env.AI_GATEWAY_API_KEY ? "gateway" : "openrouter";
 if (!apiKey) {
-  console.error("Set AI_GATEWAY_API_KEY — chat:send requires a gateway key.");
+  console.error(
+    "Set AI_GATEWAY_API_KEY or OPENROUTER_API_KEY — chat:send requires a key.",
+  );
   process.exit(1);
 }
 
@@ -17,9 +21,9 @@ const message =
   process.argv[2] ??
   "Hello! Please save a note titled 'convex-port' saying the runner works, then confirm.";
 
-console.log("→ chat:send", JSON.stringify(message.slice(0, 80)));
+console.log(`→ chat:send [${provider}]`, JSON.stringify(message.slice(0, 80)));
 const started = Date.now();
-const res = await client.action("chat:send", { apiKey, message });
+const res = await client.action("chat:send", { apiKey, provider, message });
 console.log("←", JSON.stringify(res));
 if (!res.ok || !res.sessionId) process.exit(1);
 

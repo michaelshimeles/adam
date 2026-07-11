@@ -1,16 +1,41 @@
 <script lang="ts">
   import { useConvexClient } from "convex-svelte";
-  import { gatewayKey } from "../apiKey.svelte";
+  import { modelKey, type ModelProvider } from "../apiKey.svelte";
   import { keysApi } from "../api";
 
   // BYOK gate: the deployment is public, so chats run on the visitor's own
-  // AI Gateway key. `required` (no key saved yet) blocks the dashboard until
-  // a key is provided; opened from the topbar chip it's a normal dialog.
+  // key — a Vercel AI Gateway key or an OpenRouter key. `required` (no key
+  // saved yet) blocks the dashboard until a key is provided; opened from
+  // the topbar chip it's a normal dialog.
   let { required = false, onClose }: { required?: boolean; onClose: () => void } =
     $props();
 
   const client = useConvexClient();
 
+  const PROVIDERS: Record<
+    ModelProvider,
+    {
+      label: string;
+      rejected: string;
+      placeholder: string;
+      keyPrefix: string;
+    }
+  > = {
+    gateway: {
+      label: "Vercel AI Gateway",
+      rejected: "The AI Gateway rejected this key.",
+      placeholder: "vck_…",
+      keyPrefix: "vck_",
+    },
+    openrouter: {
+      label: "OpenRouter",
+      rejected: "OpenRouter rejected this key.",
+      placeholder: "sk-or-v1-…",
+      keyPrefix: "sk-or-",
+    },
+  };
+
+  let provider = $state<ModelProvider>(modelKey.provider ?? "gateway");
   let draft = $state("");
   let checking = $state(false);
   let error = $state<string | null>(null);
@@ -19,18 +44,39 @@
     node.focus();
   };
 
+  function selectProvider(next: ModelProvider) {
+    if (provider === next) return;
+    provider = next;
+    error = null;
+  }
+
+  // Keys are self-describing (vck_… vs sk-or-…): follow a pasted key to its
+  // provider so the toggle never silently disagrees with the input.
+  function onInput() {
+    const value = draft.trim();
+    for (const [id, meta] of Object.entries(PROVIDERS)) {
+      if (value.startsWith(meta.keyPrefix)) {
+        provider = id as ModelProvider;
+        return;
+      }
+    }
+  }
+
   async function validateAndSave() {
     const apiKey = draft.trim();
     if (!apiKey || checking) return;
     checking = true;
     error = null;
     try {
-      const result = await client.action(keysApi.validate, { apiKey });
+      const result = await client.action(keysApi.validate, {
+        apiKey,
+        provider,
+      });
       if (!result.ok) {
-        error = result.error ?? "The AI Gateway rejected this key.";
+        error = result.error ?? PROVIDERS[provider].rejected;
         return;
       }
-      gatewayKey.set(apiKey);
+      modelKey.set(provider, apiKey);
       onClose();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -40,7 +86,7 @@
   }
 
   function removeKey() {
-    gatewayKey.clear();
+    modelKey.clear();
     draft = "";
     error = null;
   }
@@ -60,16 +106,25 @@
     aria-labelledby="key-dialog-title"
   >
     <p class="kicker">bring your own key</p>
-    <h2 id="key-dialog-title">Add your AI Gateway key</h2>
+    <h2 id="key-dialog-title">Add your API key</h2>
     <p class="body">
-      This demo is public, so the agent runs on <em>your</em> Vercel AI
-      Gateway key — every message you send spends your credits, nobody
-      else's. Create a free key in the Vercel dashboard under
-      <a
-        href="https://vercel.com/docs/ai-gateway"
-        target="_blank"
-        rel="noreferrer">AI Gateway → API keys</a
-      >.
+      This demo is public, so the agent runs on <em>your</em> key — every
+      message you send spends your credits, nobody else's.
+      {#if provider === "gateway"}
+        Create a free key in the Vercel dashboard under
+        <a
+          href="https://vercel.com/docs/ai-gateway"
+          target="_blank"
+          rel="noreferrer">AI Gateway → API keys</a
+        >.
+      {:else}
+        Create a key on
+        <a
+          href="https://openrouter.ai/settings/keys"
+          target="_blank"
+          rel="noreferrer">OpenRouter → API keys</a
+        >.
+      {/if}
     </p>
 
     <form
@@ -78,14 +133,36 @@
         void validateAndSave();
       }}
     >
-      <label class="field-label" for="gateway-key">AI gateway api key</label>
+      <div
+        class="provider-toggle"
+        role="radiogroup"
+        aria-label="Key provider"
+      >
+        {#each Object.entries(PROVIDERS) as [id, meta] (id)}
+          <button
+            type="button"
+            class="provider-option"
+            class:active={provider === id}
+            role="radio"
+            aria-checked={provider === id}
+            onclick={() => selectProvider(id as ModelProvider)}
+          >
+            {meta.label}
+          </button>
+        {/each}
+      </div>
+
+      <label class="field-label" for="model-key">
+        {PROVIDERS[provider].label} api key
+      </label>
       <input
-        id="gateway-key"
+        id="model-key"
         type="password"
-        placeholder="vck_…"
+        placeholder={PROVIDERS[provider].placeholder}
         autocomplete="off"
         spellcheck="false"
         bind:value={draft}
+        oninput={onInput}
         {@attach focusOnMount}
       />
 
@@ -109,9 +186,12 @@
       </div>
     </form>
 
-    {#if gatewayKey.hint}
+    {#if modelKey.hint}
       <div class="saved">
-        <span>A key ending in <code>…{gatewayKey.hint}</code> is saved.</span>
+        <span>
+          A {modelKey.providerLabel} key ending in
+          <code>…{modelKey.hint}</code> is saved.
+        </span>
         <button type="button" class="link" onclick={removeKey}>
           Remove it
         </button>
@@ -120,7 +200,8 @@
 
     <p class="fine-print">
       The key stays in this browser and is attached to your chat sessions
-      server-side while they run. Rotate or revoke it anytime in Vercel.
+      server-side while they run. Rotate or revoke it anytime with your
+      provider.
     </p>
   </div>
 </div>
@@ -193,6 +274,42 @@
     flex-direction: column;
     gap: 10px;
     margin-top: 4px;
+  }
+
+  .provider-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: #0d0d10;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+  }
+
+  .provider-option {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+
+  .provider-option:hover {
+    color: var(--text);
+  }
+
+  .provider-option.active {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #fff;
   }
 
   .field-label {

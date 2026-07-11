@@ -3,16 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
- "scripts": {
-  "dev": "convex dev",
-  "typecheck": "tsc -p convex/tsconfig.json --noEmit",
-  "vendor:eve": "node scripts/vendor-eve.mjs",
-  "deploy:web": "static-hosting upload --dist ../../apps/web/dist"
- },
+  "scripts": {
+    "dev": "convex dev",
+    "typecheck": "tsc -p convex/tsconfig.json --noEmit",
+    "vendor:eve": "node scripts/vendor-eve.mjs",
+    "deploy:web": "static-hosting upload --dist ../../apps/web/dist"
+  },
   "dependencies": {
     "@convex-dev/static-hosting": "^0.1.4",
+    "@openrouter/ai-sdk-provider": "3.0.0",
     "convex": "^1.42.1",
-    "convex-helpers": "^0.1.99"
+    "convex-helpers": "^0.1.99",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

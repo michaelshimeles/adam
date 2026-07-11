@@ -3,8 +3,9 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
+import { modelProviderValidator, normalizeProvider } from "./lib/modelKeys";
 import { loadEveBundle, type EveRouteEvent } from "./runner/bundle";
-import { withGatewayKey } from "./runner/gatewayKeyLock";
+import { withModelKey } from "./runner/modelKeyLock";
 
 /**
  * Chat entry point for the web UI — the Convex-native replacement for the
@@ -18,7 +19,8 @@ import { withGatewayKey } from "./runner/gatewayKeyLock";
  * session's event stream reactively via ui:sessionEvents.
  *
  * BYOK: the deployment is public, so every send must carry the caller's own
- * AI Gateway key. The key is recorded against the session's run id (keys
+ * key — a Vercel AI Gateway key or an OpenRouter key. The key (and which
+ * provider it belongs to) is recorded against the session's run id (keys
  * table) and runner/engine:tick injects it before executing that session's
  * jobs — model calls spend the visitor's credits, not the deployment's.
  * There is still no end-user auth beyond that; transcripts are demo-public.
@@ -34,8 +36,10 @@ const sendResult = v.object({
 
 export const send = action({
   args: {
-    /** The caller's Vercel AI Gateway key — pays for this session's turns. */
+    /** The caller's model API key — pays for this session's turns. */
     apiKey: v.string(),
+    /** Which service issued apiKey; omitted means "gateway". */
+    provider: v.optional(modelProviderValidator),
     /** Omit for a new session; pass the previous sessionId to continue. */
     sessionId: v.optional(v.string()),
     message: v.optional(v.string()),
@@ -46,11 +50,13 @@ export const send = action({
   returns: sendResult,
   handler: async (ctx, args) => {
     const apiKey = args.apiKey.trim();
+    const provider = normalizeProvider(args.provider);
     if (!apiKey) {
       return {
         ok: false,
         status: 400,
-        error: "An AI Gateway API key is required to chat.",
+        error:
+          "An API key (Vercel AI Gateway or OpenRouter) is required to chat.",
       };
     }
 
@@ -62,6 +68,7 @@ export const send = action({
       await ctx.runMutation(internal.keys.put, {
         sessionId: args.sessionId,
         apiKey,
+        provider,
       });
     }
 
@@ -101,10 +108,10 @@ export const send = action({
     };
 
     // Cover any model use inside the channel dispatch itself with the
-    // caller's key. withGatewayKey serializes gateway-key env access
+    // caller's key. withModelKey serializes credential injection
     // process-wide, so this can neither clobber nor be clobbered by a
     // concurrent runner delivery's injected key.
-    return await withGatewayKey(apiKey, async () => {
+    return await withModelKey({ provider, apiKey }, async () => {
       const response = await bundle.dispatchChannelRequest(event, routeKey, {
         dev: false,
       });
@@ -125,7 +132,7 @@ export const send = action({
       // key immediately. The runner briefly releases jobs whose key hasn't
       // landed yet (see runner/engine.ts), which closes the race window.
       if (!args.sessionId && sessionId) {
-        await ctx.runMutation(internal.keys.put, { sessionId, apiKey });
+        await ctx.runMutation(internal.keys.put, { sessionId, apiKey, provider });
       }
 
       // Channel handlers may defer work via waitUntil; a Convex action must

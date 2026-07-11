@@ -213,7 +213,8 @@
     </ul>
     <p class="removed-note">
       What remains from Vercel: <code>eve build</code> as a compile step, and
-      the AI&nbsp;Gateway for model credentials.
+      the AI&nbsp;Gateway for model credentials — or bring an OpenRouter key
+      instead.
     </p>
   </section>
 

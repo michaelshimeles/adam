@@ -10,10 +10,14 @@ const url = process.env.CONVEX_URL ?? "http://127.0.0.1:3210";
 const secret = process.env.WORLD_SERVICE_SECRET ?? "dev-world-secret";
 const client = new ConvexHttpClient(url);
 
-// chat:send is BYOK: every send carries the caller's own AI Gateway key.
-const apiKey = process.env.AI_GATEWAY_API_KEY;
+// chat:send is BYOK: every send carries the caller's own key — a Vercel AI
+// Gateway key or an OpenRouter key (gateway wins when both are set).
+const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.OPENROUTER_API_KEY;
+const provider = process.env.AI_GATEWAY_API_KEY ? "gateway" : "openrouter";
 if (!apiKey) {
-  console.error("Set AI_GATEWAY_API_KEY — chat:send requires a gateway key.");
+  console.error(
+    "Set AI_GATEWAY_API_KEY or OPENROUTER_API_KEY — chat:send requires a key.",
+  );
   process.exit(1);
 }
 
@@ -27,9 +31,10 @@ await client.mutation("notes:add", {
 });
 console.log("seeded 1 note; notes before:", (await client.query("notes:list", {})).length);
 
-console.log("→ chat:send 'Clear the notepad'");
+console.log(`→ chat:send [${provider}] 'Clear the notepad'`);
 const first = await client.action("chat:send", {
   apiKey,
+  provider,
   message: "Clear the notepad, please.",
 });
 console.log("←", JSON.stringify(first));
@@ -70,6 +75,7 @@ while (remaining() > 0) {
           );
           const res = await client.action("chat:send", {
             apiKey,
+            provider,
             sessionId,
             continuationToken,
             inputResponses: [

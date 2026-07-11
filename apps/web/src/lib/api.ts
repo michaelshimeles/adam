@@ -108,12 +108,16 @@ export interface SessionEventsPage {
   done: boolean;
 }
 
+export type ModelProvider = "gateway" | "openrouter";
+
 export const chatApi = {
   send: makeFunctionReference<
     "action",
     {
-      /** BYOK: the visitor's AI Gateway key, spent on their own turns. */
+      /** BYOK: the visitor's own key, spent on their own turns. */
       apiKey: string;
+      /** Which service issued apiKey; omitted means "gateway". */
+      provider?: ModelProvider;
       sessionId?: string;
       message?: string;
       inputResponses?: unknown[];
@@ -131,7 +135,7 @@ export const chatApi = {
 /** keys:validate action result (packages/backend/convex/keys.ts). */
 export interface KeyValidationResult {
   ok: boolean;
-  /** Remaining gateway credit balance, when the gateway reports one. */
+  /** Remaining credit balance, when the provider reports one. */
   balance?: string;
   error?: string;
 }
@@ -139,7 +143,7 @@ export interface KeyValidationResult {
 export const keysApi = {
   validate: makeFunctionReference<
     "action",
-    { apiKey: string },
+    { apiKey: string; provider?: ModelProvider },
     KeyValidationResult
   >("keys:validate"),
 };

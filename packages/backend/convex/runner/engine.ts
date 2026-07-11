@@ -3,8 +3,9 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction, type ActionCtx } from "../_generated/server";
+import type { ModelKeyCredential } from "../lib/modelKeys";
 import { loadEveBundle, type EveBundle } from "./bundle";
-import { OWNER, withGatewayKey } from "./gatewayKeyLock";
+import { OWNER, withModelKey } from "./modelKeyLock";
 
 /**
  * The in-Convex workflow executor. This replaces the eve host's queue pump:
@@ -24,15 +25,16 @@ import { OWNER, withGatewayKey } from "./gatewayKeyLock";
  * cron requeues the job — the workflow replays deterministically from its
  * event log, which is exactly the crash-recovery story eve has on any host.
  *
- * BYOK: the bundled runtime resolves model credentials from
- * process.env.AI_GATEWAY_API_KEY at request time. Each flow job's runId is
- * a session id; the sessionKeys table says whose gateway key that session
- * runs on. Since env is process-global, jobs are grouped by key and each
- * group delivered inside withGatewayKey (a process-wide mutex) — two
- * visitors' keys never coexist during delivery, and no concurrent action's
- * key cleanup can clobber an in-flight delivery. `system` sessions
- * (heartbeat schedules) and queue health checks run on the deployment's
- * own credentials.
+ * BYOK: the bundled runtime resolves model credentials from process-global
+ * state (AI_GATEWAY_API_KEY / the AI SDK default-provider slot) at request
+ * time. Each flow job's runId is a session id; the sessionKeys table says
+ * whose key — gateway or OpenRouter — that session runs on. Since that
+ * state is process-global, jobs are grouped by credential and each group
+ * delivered inside withModelKey (a process-wide mutex) — two visitors'
+ * keys never coexist during delivery, and no concurrent action's key
+ * cleanup can clobber an in-flight delivery. `system` sessions (heartbeat
+ * schedules) and queue health checks run on the deployment's own
+ * credentials.
  */
 
 const LEASE_MS = 2 * 60 * 1000;
@@ -83,16 +85,21 @@ function keyRefOf(job: ClaimedJob): JobKeyRef | null {
   }
 }
 
+type DeliveryBucket = {
+  credential: ModelKeyCredential | typeof OWNER;
+  jobs: ClaimedJob[];
+};
+
 /**
- * Sort claimed jobs into delivery buckets by gateway key. Jobs whose session
- * has no key row yet are released (or failed once they're old enough) and
- * excluded from delivery.
+ * Sort claimed jobs into delivery buckets by model credential (provider +
+ * key). Jobs whose session has no key row yet are released (or failed once
+ * they're old enough) and excluded from delivery.
  */
 async function partitionByKey(
   ctx: ActionCtx,
   workerId: string,
   jobs: ClaimedJob[],
-): Promise<Map<string | typeof OWNER, ClaimedJob[]>> {
+): Promise<DeliveryBucket[]> {
   const refs = new Map<string, JobKeyRef>();
   for (const job of jobs) {
     const ref = keyRefOf(job);
@@ -106,11 +113,18 @@ async function partitionByKey(
       : [];
   const keyByRun = new Map(rows.map((row) => [row.runId, row]));
 
-  const buckets = new Map<string | typeof OWNER, ClaimedJob[]>();
-  const push = (key: string | typeof OWNER, job: ClaimedJob) => {
-    const bucket = buckets.get(key);
-    if (bucket) bucket.push(job);
-    else buckets.set(key, [job]);
+  const buckets = new Map<string | typeof OWNER, DeliveryBucket>();
+  const push = (
+    credential: ModelKeyCredential | typeof OWNER,
+    job: ClaimedJob,
+  ) => {
+    const id =
+      credential === OWNER
+        ? OWNER
+        : `${credential.provider}\u0000${credential.apiKey}`;
+    const bucket = buckets.get(id);
+    if (bucket) bucket.jobs.push(job);
+    else buckets.set(id, { credential, jobs: [job] });
   };
 
   for (const job of jobs) {
@@ -140,9 +154,9 @@ async function partitionByKey(
       continue;
     }
     if (row.system || row.apiKey === undefined) push(OWNER, job);
-    else push(row.apiKey, job);
+    else push({ provider: row.provider, apiKey: row.apiKey }, job);
   }
-  return buckets;
+  return [...buckets.values()];
 }
 
 export const tick = internalAction({
@@ -163,13 +177,13 @@ export const tick = internalAction({
       if (jobs.length === 0) break;
 
       const buckets = await partitionByKey(ctx, workerId, jobs);
-      if (buckets.size === 0) {
+      if (buckets.length === 0) {
         // Everything was released waiting on its key; the releases already
         // scheduled a follow-up tick, so don't spin on the same jobs here.
         break;
       }
-      for (const [key, bucket] of buckets) {
-        await withGatewayKey(key, () =>
+      for (const { credential, jobs: bucket } of buckets) {
+        await withModelKey(credential, () =>
           Promise.all(bucket.map((job) => deliver(ctx, bundle, workerId, job))),
         );
       }
