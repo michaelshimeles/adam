@@ -3,6 +3,8 @@
   import { api } from "../api";
   import { clock, duration, shortId, timeAgo, workflowLabel } from "../format";
   import { getNow } from "../now.svelte";
+  import StatusPill from "./StatusPill.svelte";
+  import { Button } from "ui/components/button";
 
   let { runId, onClose }: { runId: string; onClose: () => void } = $props();
 
@@ -11,15 +13,11 @@
   const events = useQuery(api.listEvents, () => ({ runId }));
   const streams = useQuery(api.listRunStreams, () => ({ runId }));
 
-  let selectedStream = $state<string | null>(null);
-
-  // Auto-select the first stream once streams load.
-  $effect(() => {
-    const list = streams.data;
-    if (list && list.length > 0 && selectedStream === null) {
-      selectedStream = list[0]!.name;
-    }
-  });
+  // First stream is auto-selected; clicking a tab overrides it.
+  let manualStream = $state<string | null>(null);
+  const selectedStream = $derived(
+    manualStream ?? streams.data?.[0]?.name ?? null,
+  );
 
   const streamTail = useQuery(api.streamText, () =>
     selectedStream === null
@@ -27,13 +25,11 @@
       : { runId, name: selectedStream, startSeq: 0 },
   );
 
-  let tailEl = $state<HTMLPreElement | null>(null);
-
-  // Follow the live tail as new chunks arrive.
-  $effect(() => {
+  // Attachment: re-runs whenever the stream text grows, following the tail.
+  function followTail(node: HTMLElement) {
     void streamTail.data?.text;
-    if (tailEl) tailEl.scrollTop = tailEl.scrollHeight;
-  });
+    node.scrollTop = node.scrollHeight;
+  }
 
   function onKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") onClose();
@@ -42,102 +38,140 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="backdrop" onclick={onClose} role="presentation"></div>
+<div
+  class="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px]"
+  onclick={onClose}
+  role="presentation"
+></div>
 
-<aside class="drawer" aria-label="Run detail">
-  <header>
-    <div class="title">
+<aside
+  class="shadow-modal fixed top-0 right-0 bottom-0 z-50 flex w-[min(560px,94vw)] flex-col border-l bg-background max-sm:w-screen max-sm:border-l-0"
+  aria-label="Run detail"
+>
+  <header class="flex items-center justify-between gap-3 border-b px-4 pt-4 pb-3">
+    <div class="flex min-w-0 items-center gap-2.5">
       {#if run.data}
-        <span class="pill {run.data.status}">
-          <span class="dot"></span>{run.data.status}
-        </span>
-        <h2 title={run.data.workflowName}>
+        <StatusPill status={run.data.status} />
+        <h2
+          class="m-0 truncate text-sm font-semibold tracking-[-0.28px]"
+          title={run.data.workflowName}
+        >
           {workflowLabel(run.data.workflowName)}
         </h2>
       {:else}
-        <h2>Run</h2>
+        <h2 class="m-0 text-sm font-semibold tracking-[-0.28px]">Run</h2>
       {/if}
     </div>
-    <button class="close" onclick={onClose} aria-label="Close">✕</button>
+    <Button
+      variant="ghost"
+      size="xs"
+      class="shrink-0 text-muted-foreground"
+      onclick={onClose}
+      aria-label="Close"
+    >
+      ✕
+    </Button>
   </header>
 
   {#if run.data}
-    <div class="facts">
-      <div class="fact">
-        <span class="k">run id</span>
-        <span class="v mono" title={runId}>{shortId(runId)}</span>
+    <div class="flex flex-wrap gap-x-6 gap-y-2.5 border-b px-4 py-3">
+      <div class="flex flex-col gap-px">
+        <span class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase">
+          run id
+        </span>
+        <span class="font-mono text-xs text-foreground" title={runId}>{shortId(runId)}</span>
       </div>
-      <div class="fact">
-        <span class="k">created</span>
-        <span class="v">{timeAgo(run.data.createdAt, getNow())}</span>
+      <div class="flex flex-col gap-px">
+        <span class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase">
+          created
+        </span>
+        <span class="text-xs text-foreground">{timeAgo(run.data.createdAt, getNow())}</span>
       </div>
-      <div class="fact">
-        <span class="k">duration</span>
-        <span class="v">
+      <div class="flex flex-col gap-px">
+        <span class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase">
+          duration
+        </span>
+        <span class="text-xs text-foreground">
           {duration(run.data.startedAt, run.data.completedAt)}
         </span>
       </div>
       {#if run.data.errorCode}
-        <div class="fact">
-          <span class="k">error</span>
-          <span class="v err">{run.data.errorCode}</span>
+        <div class="flex flex-col gap-px">
+          <span class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase">
+            error
+          </span>
+          <span class="font-mono text-xs text-red-900">{run.data.errorCode}</span>
         </div>
       {/if}
     </div>
   {/if}
 
-  <div class="body">
+  <div class="flex flex-col gap-6 overflow-y-auto px-4 pt-4 pb-7">
     <section>
-      <h3>Live output stream</h3>
+      <h3
+        class="m-0 mb-2.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase"
+      >
+        Live Output Stream
+      </h3>
       {#if streams.data && streams.data.length > 0}
-        <div class="stream-tabs">
+        <div class="mb-2 flex flex-wrap gap-1.5">
           {#each streams.data as s (s.name)}
             <button
-              class="stream-tab"
-              class:active={selectedStream === s.name}
-              onclick={() => (selectedStream = s.name)}
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors duration-150 {selectedStream ===
+              s.name
+                ? 'border-alpha-600 bg-gray-200 text-foreground'
+                : 'bg-gray-100 text-muted-foreground hover:border-alpha-500'}"
+              onclick={() => (manualStream = s.name)}
             >
               {s.name.length > 22 ? `${s.name.slice(0, 22)}…` : s.name}
-              <span class="count">{s.dataCount}</span>
-              {#if !s.done}<span class="live-dot"></span>{/if}
+              <span class="text-[10px] text-gray-600">{s.dataCount}</span>
+              {#if !s.done}
+                <span class="size-1.5 animate-pulse rounded-full bg-green-900"></span>
+              {/if}
             </button>
           {/each}
         </div>
         {#if streamTail.data}
-          <pre class="tail" bind:this={tailEl}>{streamTail.data.text || "(no data yet)"}</pre>
-          <div class="tail-meta">
+          <pre
+            class="m-0 max-h-64 overflow-y-auto rounded-md border bg-gray-100/50 px-3.5 py-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-gray-900"
+            {@attach followTail}>{streamTail.data.text || "(no data yet)"}</pre>
+          <div class="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-600">
             {#if streamTail.data.done}
               stream closed · {streamTail.data.nextSeq} chunks
             {:else}
-              <span class="live-dot"></span> streaming · {streamTail.data.nextSeq}
-              chunks
+              <span class="size-1.5 animate-pulse rounded-full bg-green-900"></span>
+              streaming · {streamTail.data.nextSeq} chunks
             {/if}
           </div>
         {:else}
-          <div class="empty">Loading stream…</div>
+          <div class="px-0.5 py-2 text-xs leading-5 text-muted-foreground">Loading stream…</div>
         {/if}
       {:else}
-        <div class="empty">
+        <div class="px-0.5 py-2 text-xs leading-5 text-muted-foreground">
           No streams on this run. Agent session runs stream their model output
           here token by token — sourced live from the
-          <code>streamChunks</code> table.
+          <code class="rounded-sm border bg-gray-100 px-1 py-px font-mono text-[11px] text-foreground"
+            >streamChunks</code
+          > table.
         </div>
       {/if}
     </section>
 
     <section>
-      <h3>Steps</h3>
+      <h3
+        class="m-0 mb-2.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase"
+      >
+        Steps
+      </h3>
       {#if steps.data && steps.data.length > 0}
-        <ul class="steps">
+        <ul class="m-0 flex list-none flex-col divide-y overflow-hidden rounded-md border p-0">
           {#each steps.data as step (step.stepId)}
-            <li>
-              <span class="pill {step.status}">
-                <span class="dot"></span>{step.status}
-              </span>
-              <span class="step-name mono" title={step.stepName}>
+            <li class="flex min-w-0 items-center gap-2.5 px-3 py-2">
+              <StatusPill status={step.status} />
+              <span class="min-w-0 flex-1 truncate font-mono text-xs" title={step.stepName}>
                 {step.stepName.replace(/^step\/\//, "")}
               </span>
-              <span class="step-meta">
+              <span class="font-mono text-[11px] whitespace-nowrap text-gray-600">
                 {#if step.attempt > 1}retry ×{step.attempt} ·{/if}
                 {duration(step.startedAt, step.completedAt)}
               </span>
@@ -145,296 +179,30 @@
           {/each}
         </ul>
       {:else}
-        <div class="empty">No steps recorded.</div>
+        <div class="px-0.5 py-2 text-xs text-muted-foreground">No steps recorded.</div>
       {/if}
     </section>
 
     <section>
-      <h3>Event log</h3>
+      <h3
+        class="m-0 mb-2.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase"
+      >
+        Event Log
+      </h3>
       {#if events.data && events.data.length > 0}
-        <ul class="events">
+        <ul class="m-0 flex max-h-72 list-none flex-col gap-1.5 overflow-y-auto p-0">
           {#each events.data as ev (ev.eventId)}
-            <li>
-              <span class="ev-time mono">{clock(ev.createdAt)}</span>
-              <span class="ev-type">{ev.eventType}</span>
+            <li class="flex items-baseline gap-3 px-0.5 py-px text-xs">
+              <span class="shrink-0 font-mono text-[11px] text-gray-600">
+                {clock(ev.createdAt)}
+              </span>
+              <span class="text-muted-foreground">{ev.eventType}</span>
             </li>
           {/each}
         </ul>
       {:else}
-        <div class="empty">No events.</div>
+        <div class="px-0.5 py-2 text-xs text-muted-foreground">No events.</div>
       {/if}
     </section>
   </div>
 </aside>
-
-<style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(4, 5, 8, 0.55);
-    backdrop-filter: blur(2px);
-    z-index: 40;
-  }
-
-  .drawer {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(560px, 94vw);
-    background: var(--bg-raise);
-    border-left: 1px solid var(--border);
-    z-index: 50;
-    display: flex;
-    flex-direction: column;
-    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 16px 18px 12px;
-    border-bottom: 1px solid var(--border-soft);
-  }
-
-  .title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  h2 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 700;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .close {
-    background: var(--panel-2);
-    color: var(--text-dim);
-    border: 1px solid var(--border-soft);
-    border-radius: 8px;
-    width: 28px;
-    height: 28px;
-    cursor: pointer;
-    font-size: 12px;
-    flex-shrink: 0;
-  }
-
-  .close:hover {
-    color: var(--text);
-    border-color: var(--border);
-  }
-
-  .facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 22px;
-    padding: 12px 18px;
-    border-bottom: 1px solid var(--border-soft);
-  }
-
-  .fact {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .fact .k {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--text-faint);
-    font-weight: 700;
-  }
-
-  .fact .v {
-    font-size: 12.5px;
-    color: var(--text);
-  }
-
-  .fact .v.err {
-    color: var(--red);
-    font-family: var(--mono);
-  }
-
-  .mono {
-    font-family: var(--mono);
-  }
-
-  .body {
-    overflow-y: auto;
-    padding: 16px 18px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-  }
-
-  h3 {
-    margin: 0 0 10px;
-    font-family: var(--mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-    font-weight: 700;
-  }
-
-  .stream-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 8px;
-  }
-
-  .stream-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    background: var(--panel-2);
-    color: var(--text-dim);
-    border: 1px solid var(--border-soft);
-    border-radius: 999px;
-    padding: 4px 11px;
-    font-size: 11.5px;
-    font-family: var(--mono);
-    cursor: pointer;
-  }
-
-  .stream-tab.active {
-    color: #fff;
-    border-color: rgba(255, 255, 255, 0.4);
-    background: #17171c;
-  }
-
-  .stream-tab .count {
-    color: var(--text-faint);
-    font-size: 10px;
-  }
-
-  .live-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    display: inline-block;
-    animation: pulse 1.6s ease-in-out infinite;
-  }
-
-  .tail {
-    margin: 0;
-    background: #08080a;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-sm);
-    padding: 12px 14px;
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 260px;
-    overflow-y: auto;
-    color: #b9b9c2;
-  }
-
-  .tail-meta {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    margin-top: 6px;
-    font-size: 11px;
-    color: var(--text-faint);
-  }
-
-  .steps,
-  .events {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .steps li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: 8px 12px;
-    min-width: 0;
-  }
-
-  .step-name {
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .step-meta {
-    font-size: 11px;
-    color: var(--text-faint);
-    white-space: nowrap;
-  }
-
-  .events {
-    max-height: 300px;
-    overflow-y: auto;
-  }
-
-  .events li {
-    display: flex;
-    gap: 12px;
-    align-items: baseline;
-    padding: 3px 2px;
-    font-size: 12px;
-  }
-
-  .ev-time {
-    color: var(--text-faint);
-    font-size: 11px;
-    flex-shrink: 0;
-  }
-
-  .ev-type {
-    color: var(--text-dim);
-  }
-
-  .empty {
-    color: var(--text-faint);
-    font-size: 12.5px;
-    line-height: 1.5;
-    padding: 8px 2px;
-  }
-
-  .empty code {
-    font-family: var(--mono);
-    background: var(--panel-2);
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 11px;
-  }
-
-  @media (max-width: 640px) {
-    .drawer {
-      width: 100vw;
-      border-left: none;
-    }
-
-    .close {
-      width: 34px;
-      height: 34px;
-    }
-  }
-</style>

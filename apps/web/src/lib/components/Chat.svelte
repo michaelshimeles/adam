@@ -5,6 +5,8 @@
     EveMessageInputRequest,
   } from "eve/client";
   import { createChatSession } from "../chat.svelte";
+  import { Button } from "ui/components/button";
+  import { Textarea } from "ui/components/textarea";
 
   // Convex-native chat: sends go through the chat:send action and the
   // transcript is a reactive Convex query over the session's event stream.
@@ -12,19 +14,19 @@
 
   let draft = $state("");
   let hitlText = $state<Record<string, string>>({});
-  let scroller = $state<HTMLDivElement | null>(null);
 
   const busy = $derived(
     agent.status === "submitted" || agent.status === "streaming",
   );
   const messages = $derived(agent.data.messages);
 
-  // Keep the newest message in view as tokens stream in.
-  $effect(() => {
+  // Attachment: re-runs on every messages/status change, keeping the
+  // newest message in view as tokens stream in.
+  function followTail(node: HTMLElement) {
     void messages;
     void agent.status;
-    if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  });
+    node.scrollTop = node.scrollHeight;
+  }
 
   const suggestions = [
     "Save a note: eve is running on Convex end to end",
@@ -96,101 +98,197 @@
   }
 </script>
 
-<section class="chat">
-  <div class="messages" bind:this={scroller}>
+<section
+  data-chat
+  class="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-background"
+>
+  <header class="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b px-4">
+    <h2 class="m-0 font-mono text-[11px] font-semibold tracking-[0.08em] text-foreground uppercase">
+      Agent Session
+    </h2>
+    <div class="flex min-w-0 items-center gap-3 font-mono text-[11px] text-gray-600">
+      {#if agent.sessionId}
+        <span class="hidden truncate md:inline">{agent.sessionId.slice(0, 16)}…</span>
+      {/if}
+      <span
+        class="inline-flex shrink-0 items-center gap-1.5 {agent.status === 'streaming'
+          ? 'text-green-900'
+          : agent.status === 'submitted'
+            ? 'text-amber-900'
+            : agent.status === 'error'
+              ? 'text-red-900'
+              : ''}"
+      >
+        {#if busy}
+          <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+        {/if}
+        {agent.status}
+      </span>
+    </div>
+  </header>
+
+  <div
+    class="flex min-h-0 flex-1 scroll-smooth flex-col gap-4 overflow-y-auto p-3.5 md:gap-5 md:p-5"
+    {@attach followTail}
+  >
     {#if messages.length === 0}
-      <div class="welcome">
-        <div class="glyph">◆</div>
-        <h2>Talk to your durable agent</h2>
-        <p>
-          Every turn becomes a workflow run persisted in Convex — steps, retries,
-          human-in-the-loop approvals, and token streams all land in the tables
-          on the right.
+      <div class="m-auto flex w-full max-w-md flex-col items-center gap-2.5 py-10 text-center">
+        <p class="m-0 font-mono text-[11px] font-medium tracking-[0.12em] text-gray-600 uppercase">
+          every turn is a workflow run
         </p>
-        <div class="suggestions">
+        <h2 class="m-0 text-xl leading-[26px] font-semibold tracking-[-0.4px] text-gray-1000">
+          Talk to your durable agent
+        </h2>
+        <p class="m-0 text-sm leading-5 text-muted-foreground">
+          Steps, retries, human-in-the-loop approvals, and token streams all
+          land in the panels on the right — live from Convex.
+        </p>
+        <div class="mt-3 flex w-full max-w-sm flex-col gap-1.5">
           {#each suggestions as suggestion (suggestion)}
-            <button class="suggestion" onclick={() => submit(suggestion)}>
-              {suggestion}
+            <button
+              class="cursor-pointer rounded-md border bg-transparent px-3.5 py-2 text-left text-[13px] text-muted-foreground transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100 hover:text-foreground"
+              onclick={() => submit(suggestion)}
+            >
+              <span class="mr-2 font-mono text-gray-600" aria-hidden="true">→</span>{suggestion}
             </button>
           {/each}
         </div>
       </div>
     {:else}
       {#each messages as message (message.id)}
-        <article class="message {message.role}">
-          <div class="role">
+        <article
+          class="flex max-w-[86%] flex-col gap-1.5 {message.role === 'user'
+            ? 'items-end self-end'
+            : 'items-start self-start'}"
+        >
+          <div
+            class="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.1em] text-gray-600 uppercase"
+          >
             {roleLabel(message)}
             {#if message.metadata?.status === "streaming"}
-              <span class="streaming-dot"></span>
+              <span class="size-1.5 animate-pulse rounded-full bg-green-900"></span>
             {/if}
           </div>
-          <div class="parts">
+          <div
+            class="flex w-full min-w-0 flex-col gap-2 {message.role === 'user'
+              ? 'items-end'
+              : ''}"
+          >
             {#each message.parts as part, i (i)}
               {#if part.type === "text"}
-                <p class="text">{part.text}</p>
+                <p
+                  class="m-0 w-fit max-w-full rounded-md px-3.5 py-2.5 text-sm leading-5 break-words whitespace-pre-wrap {message.role ===
+                  'user'
+                    ? 'rounded-tr-sm bg-primary text-primary-foreground'
+                    : 'rounded-tl-sm border bg-gray-100 text-foreground'}"
+                >
+                  {part.text}
+                </p>
               {:else if part.type === "reasoning"}
                 {#if part.text.trim().length > 0}
-                  <details class="reasoning">
-                    <summary>reasoning</summary>
-                    <p>{part.text}</p>
+                  <details class="border-l-2 border-border pl-2.5 text-xs text-gray-600">
+                    <summary
+                      class="cursor-pointer text-[10px] font-semibold tracking-[0.08em] uppercase"
+                    >
+                      reasoning
+                    </summary>
+                    <p class="mt-1.5 mb-0 whitespace-pre-wrap">{part.text}</p>
                   </details>
                 {/if}
               {:else if part.type === "dynamic-tool"}
-                <div class="tool" data-state={part.state}>
-                  <div class="tool-head">
-                    <span class="tool-name">{part.toolName}</span>
-                    <span class="tool-state">{part.state.replace(/-/g, " ")}</span>
+                <div
+                  class="flex w-full max-w-[460px] flex-col gap-1.5 rounded-md border bg-gray-100 px-3 py-2.5 {part.state ===
+                  'approval-requested'
+                    ? 'border-alpha-600'
+                    : ''}"
+                >
+                  <div class="flex items-center justify-between gap-2.5">
+                    <span
+                      class="font-mono text-xs font-semibold tracking-[0.06em] text-gray-1000 uppercase"
+                    >
+                      {part.toolName}
+                    </span>
+                    <span
+                      class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase"
+                    >
+                      {part.state.replace(/-/g, " ")}
+                    </span>
                   </div>
                   {#if part.input !== undefined && compactJson(part.input)}
-                    <code class="tool-io">{compactJson(part.input)}</code>
+                    <code
+                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-muted-foreground"
+                    >
+                      {compactJson(part.input)}
+                    </code>
                   {/if}
                   {#if part.state === "output-available" && compactJson(part.output)}
-                    <code class="tool-io out">{compactJson(part.output)}</code>
+                    <code
+                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-green-900"
+                    >
+                      {compactJson(part.output)}
+                    </code>
                   {/if}
                   {#if part.state === "output-error"}
-                    <code class="tool-io err">{part.errorText}</code>
+                    <code
+                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-red-900"
+                    >
+                      {part.errorText}
+                    </code>
                   {/if}
                   {#if part.state === "output-denied"}
-                    <code class="tool-io err">denied by user</code>
+                    <code
+                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-red-900"
+                    >
+                      denied by user
+                    </code>
                   {/if}
 
                   {#if part.state === "approval-requested"}
                     {@const request = inputRequestOf(part)}
                     {@const requestId = requestIdOf(part)}
                     {#if requestId}
-                      <div class="hitl">
-                        <p class="hitl-prompt">
+                      <div class="flex flex-col gap-2 border-t border-dashed pt-2">
+                        <p class="m-0 text-sm text-foreground">
                           {request?.prompt ??
                             `Allow the agent to run ${part.toolName}?`}
                         </p>
-                        <div class="hitl-actions">
+                        <div class="flex flex-wrap gap-1.5">
                           {#if request?.options && request.options.length > 0}
                             {#each request.options as option (option.id)}
-                              <button
-                                class="hitl-btn {option.style ?? 'default'}"
+                              <Button
+                                variant={option.style === "primary"
+                                  ? "default"
+                                  : option.style === "danger"
+                                    ? "destructive"
+                                    : "outline"}
+                                size="sm"
+                                class="rounded-full px-3"
                                 onclick={() => respond(requestId, option.id)}
                               >
                                 {option.label}
-                              </button>
+                              </Button>
                             {/each}
                           {:else}
-                            <button
-                              class="hitl-btn primary"
+                            <Button
+                              size="sm"
+                              class="rounded-full px-3"
                               onclick={() => respond(requestId, "approve")}
                             >
                               Approve
-                            </button>
-                            <button
-                              class="hitl-btn danger"
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              class="rounded-full px-3"
                               onclick={() => respond(requestId, "deny")}
                             >
                               Deny
-                            </button>
+                            </Button>
                           {/if}
                         </div>
                         {#if request?.allowFreeform || request?.display === "text"}
                           <form
-                            class="hitl-freeform"
+                            class="flex gap-1.5"
                             onsubmit={(e) => {
                               e.preventDefault();
                               const text = hitlText[requestId]?.trim();
@@ -198,12 +296,18 @@
                             }}
                           >
                             <input
+                              class="h-8 min-w-0 flex-1 rounded-full border bg-background px-3 text-xs text-foreground transition-colors duration-150 outline-none placeholder:text-muted-foreground hover:border-alpha-500"
                               placeholder="Or type a response…"
                               bind:value={hitlText[requestId]}
                             />
-                            <button type="submit" class="hitl-btn default">
+                            <Button
+                              type="submit"
+                              variant="outline"
+                              size="sm"
+                              class="rounded-full px-3"
+                            >
                               Send
-                            </button>
+                            </Button>
                           </form>
                         {/if}
                       </div>
@@ -211,21 +315,31 @@
                   {/if}
                 </div>
               {:else if part.type === "authorization"}
-                <div class="tool">
-                  <div class="tool-head">
-                    <span class="tool-name">{part.displayName}</span>
-                    <span class="tool-state">{part.state}</span>
+                <div
+                  class="flex w-full max-w-[460px] flex-col gap-1.5 rounded-md border bg-gray-100 px-3 py-2.5"
+                >
+                  <div class="flex items-center justify-between gap-2.5">
+                    <span
+                      class="font-mono text-xs font-semibold tracking-[0.06em] text-gray-1000 uppercase"
+                    >
+                      {part.displayName}
+                    </span>
+                    <span
+                      class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase"
+                    >
+                      {part.state}
+                    </span>
                   </div>
                   {#if part.state === "required" && part.authorization?.url}
                     <a
-                      class="auth-link"
+                      class="text-xs text-blue-900 underline-offset-4 hover:underline"
                       href={part.authorization.url}
                       target="_blank"
                       rel="noreferrer"
                     >
                       Authorize {part.displayName}
                       {#if part.authorization.userCode}
-                        · code <code>{part.authorization.userCode}</code>
+                        · code <code class="font-mono">{part.authorization.userCode}</code>
                       {/if}
                     </a>
                   {/if}
@@ -239,536 +353,36 @@
   </div>
 
   {#if agent.error}
-    <div class="error-banner">
-      {agent.error}
-      <button onclick={() => agent.reset()}>new session</button>
+    <div
+      class="mx-3.5 flex items-center justify-between gap-3 rounded-md border border-red-400 bg-red-100 px-3 py-2 text-xs text-red-900 md:mx-4"
+    >
+      <span class="min-w-0 break-words">{agent.error}</span>
+      <Button
+        variant="outline"
+        size="sm"
+        class="shrink-0 border-red-400 text-red-900 hover:bg-red-200"
+        onclick={() => agent.reset()}
+      >
+        New Session
+      </Button>
     </div>
   {/if}
 
-  <footer class="composer">
-    <textarea
+  <footer class="flex items-end gap-2.5 border-t p-3 md:px-4 md:pt-3.5 md:pb-3.5">
+    <Textarea
+      class="max-h-36 min-h-10 flex-1 text-sm md:text-sm"
       placeholder={busy ? "Agent is working…" : "Message the agent…"}
       bind:value={draft}
       onkeydown={onComposerKeydown}
-      rows="1"
-    ></textarea>
-    <div class="composer-actions">
+      rows={1}
+    />
+    <div class="flex gap-2">
       {#if !busy && messages.length > 0}
-        <button class="btn ghost" onclick={() => agent.reset()}>New chat</button>
+        <Button variant="ghost" onclick={() => agent.reset()}>New Chat</Button>
       {/if}
-      <button
-        class="btn primary"
-        disabled={busy || draft.trim().length === 0}
-        onclick={() => submit()}
-      >
+      <Button disabled={busy || draft.trim().length === 0} onclick={() => submit()}>
         Send
-      </button>
+      </Button>
     </div>
   </footer>
-
-  <div class="statusline">
-    <span class="status-{agent.status}">{agent.status}</span>
-    {#if agent.sessionId}
-      <span class="mono">session {agent.sessionId.slice(0, 16)}…</span>
-    {/if}
-    <span class="mono dim">runtime: convex node action</span>
-  </div>
 </section>
-
-<style>
-  .chat {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    min-height: 0;
-    scroll-behavior: smooth;
-  }
-
-  .welcome {
-    margin: auto;
-    max-width: 430px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 40px 0;
-  }
-
-  .glyph {
-    font-size: 26px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .welcome h2 {
-    margin: 0;
-    font-size: 19px;
-    font-weight: 600;
-    letter-spacing: -0.015em;
-    color: #fff;
-  }
-
-  .welcome p {
-    margin: 0;
-    color: var(--text-dim);
-    font-size: 13px;
-    line-height: 1.55;
-  }
-
-  .suggestions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-    margin-top: 10px;
-  }
-
-  .suggestion {
-    background: #0d0d10;
-    color: var(--text-dim);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    padding: 7px 14px;
-    font-size: 12.5px;
-    cursor: pointer;
-    transition:
-      color 120ms ease,
-      border-color 120ms ease,
-      background 120ms ease;
-  }
-
-  .suggestion:hover {
-    color: var(--text);
-    border-color: rgba(255, 255, 255, 0.3);
-    background: #101014;
-  }
-
-  .message {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-width: 86%;
-  }
-
-  .message.user {
-    align-self: flex-end;
-    align-items: flex-end;
-  }
-
-  .message.assistant {
-    align-self: flex-start;
-    align-items: flex-start;
-  }
-
-  .role {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-faint);
-  }
-
-  .streaming-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    animation: pulse 1.4s ease-in-out infinite;
-  }
-
-  .parts {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-width: 0;
-    width: 100%;
-  }
-
-  .message.user .parts {
-    align-items: flex-end;
-  }
-
-  .text {
-    margin: 0;
-    padding: 10px 14px;
-    border-radius: 14px;
-    font-size: 13.5px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    word-break: break-word;
-    width: fit-content;
-    max-width: 100%;
-  }
-
-  .message.assistant .text {
-    background: #141419;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top-left-radius: 4px;
-  }
-
-  .message.user .text {
-    background: #fff;
-    border: 1px solid #fff;
-    color: #0a0a0c;
-    border-top-right-radius: 4px;
-  }
-
-  .reasoning {
-    font-size: 12px;
-    color: var(--text-faint);
-    background: transparent;
-    border-left: 2px solid var(--border);
-    padding-left: 10px;
-  }
-
-  .reasoning summary {
-    cursor: pointer;
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 700;
-  }
-
-  .reasoning p {
-    margin: 6px 0 0;
-    white-space: pre-wrap;
-  }
-
-  .tool {
-    background: #0d0d10;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 9px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    width: 100%;
-    max-width: 460px;
-  }
-
-  .tool[data-state="approval-requested"] {
-    border-color: rgba(255, 255, 255, 0.28);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  }
-
-  .tool-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .tool-name {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #ededf0;
-  }
-
-  .tool-state {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--text-faint);
-    font-weight: 700;
-  }
-
-  .tool-io {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--text-dim);
-    background: #141419;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 6px 8px;
-    border-radius: 6px;
-    word-break: break-all;
-    white-space: pre-wrap;
-  }
-
-  .tool-io.out {
-    color: var(--green);
-  }
-
-  .tool-io.err {
-    color: var(--red);
-  }
-
-  .hitl {
-    border-top: 1px dashed var(--border);
-    padding-top: 9px;
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
-  }
-
-  .hitl-prompt {
-    margin: 0;
-    font-size: 13px;
-    color: var(--text);
-  }
-
-  .hitl-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-  }
-
-  .hitl-btn {
-    border-radius: 999px;
-    padding: 6px 14px;
-    font-size: 12.5px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: transparent;
-    color: #c8c8ce;
-    transition:
-      border-color 0.15s,
-      color 0.15s;
-  }
-
-  .hitl-btn:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    color: #fff;
-  }
-
-  .hitl-btn.primary {
-    background: #fff;
-    border-color: #fff;
-    color: #0a0a0c;
-    transition:
-      transform 0.12s,
-      box-shadow 0.12s;
-  }
-
-  .hitl-btn.primary:hover {
-    color: #0a0a0c;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.18);
-  }
-
-  .hitl-btn.danger {
-    background: rgba(255, 98, 112, 0.12);
-    border-color: rgba(255, 98, 112, 0.4);
-    color: var(--red);
-  }
-
-  .hitl-btn.danger:hover {
-    border-color: rgba(255, 98, 112, 0.7);
-    color: var(--red);
-  }
-
-  .hitl-freeform {
-    display: flex;
-    gap: 7px;
-  }
-
-  .hitl-freeform input {
-    flex: 1;
-    background: #0d0d10;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    color: var(--text);
-    padding: 6px 12px;
-    font-size: 12.5px;
-    font-family: inherit;
-  }
-
-  .hitl-freeform input:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  .auth-link {
-    color: var(--blue);
-    font-size: 12.5px;
-  }
-
-  .error-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 0 16px;
-    padding: 9px 13px;
-    background: rgba(255, 98, 112, 0.08);
-    border: 1px solid rgba(255, 98, 112, 0.35);
-    border-radius: var(--radius-sm);
-    color: var(--red);
-    font-size: 12.5px;
-  }
-
-  .error-banner button {
-    background: transparent;
-    border: 1px solid rgba(255, 98, 112, 0.45);
-    color: var(--red);
-    border-radius: 6px;
-    padding: 3px 10px;
-    font-size: 11.5px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .composer {
-    display: flex;
-    gap: 10px;
-    padding: 14px 16px 10px;
-    border-top: 1px solid var(--border-soft);
-    align-items: flex-end;
-  }
-
-  textarea {
-    flex: 1;
-    resize: none;
-    background: #0d0d10;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 12px;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 13.5px;
-    line-height: 1.5;
-    padding: 10px 13px;
-    min-height: 42px;
-    max-height: 140px;
-    transition:
-      border-color 0.15s,
-      background 0.15s;
-  }
-
-  textarea:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-    background: #101014;
-  }
-
-  .composer-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .btn {
-    border-radius: 999px;
-    padding: 10px 20px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-
-  .btn.primary {
-    background: #fff;
-    color: #0a0a0c;
-    transition:
-      transform 0.12s,
-      box-shadow 0.12s;
-  }
-
-  .btn.primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.18);
-  }
-
-  .btn.primary:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  .btn.ghost {
-    background: transparent;
-    color: #c8c8ce;
-    border-color: rgba(255, 255, 255, 0.16);
-    transition:
-      border-color 0.15s,
-      color 0.15s;
-  }
-
-  .btn.ghost:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    color: #fff;
-  }
-
-  .statusline {
-    display: flex;
-    gap: 14px;
-    align-items: center;
-    padding: 0 18px 10px;
-    font-size: 11px;
-    color: var(--text-faint);
-  }
-
-  .statusline .mono {
-    font-family: var(--mono);
-  }
-
-  .statusline .dim {
-    margin-left: auto;
-    opacity: 0.75;
-  }
-
-  .status-streaming {
-    color: var(--green);
-  }
-
-  .status-submitted {
-    color: var(--amber);
-  }
-
-  .status-error {
-    color: var(--red);
-  }
-
-  @media (max-width: 640px) {
-    .messages {
-      padding: 14px;
-      gap: 14px;
-    }
-
-    .message {
-      max-width: 94%;
-    }
-
-    .composer {
-      padding: 10px 12px 8px;
-      gap: 8px;
-    }
-
-    textarea {
-      /* 16px stops iOS Safari from zooming the page on focus. */
-      font-size: 16px;
-    }
-
-    .btn {
-      padding: 10px 16px;
-    }
-
-    .statusline {
-      padding: 0 12px 8px;
-      gap: 10px;
-    }
-
-    .statusline .mono:not(.dim) {
-      display: none;
-    }
-  }
-</style>

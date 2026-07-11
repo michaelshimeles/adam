@@ -2,6 +2,9 @@
   import { useConvexClient } from "convex-svelte";
   import { gatewayKey } from "../apiKey.svelte";
   import { keysApi } from "../api";
+  import { Button } from "ui/components/button";
+  import { Input } from "ui/components/input";
+  import { Label } from "ui/components/label";
 
   // BYOK gate: the deployment is public, so chats run on the visitor's own
   // AI Gateway key. `required` (no key saved yet) blocks the dashboard until
@@ -52,20 +55,33 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="overlay">
+<div
+  class="fixed inset-0 z-60 flex items-center justify-center bg-black/70 p-5 backdrop-blur-md max-sm:items-end max-sm:p-3.5"
+>
   <div
-    class="dialog"
+    class="shadow-modal flex w-[min(480px,100%)] flex-col gap-3 rounded-xl border bg-popover p-7 max-sm:mb-2.5 max-sm:max-h-[85dvh] max-sm:overflow-y-auto max-sm:p-5"
     role="dialog"
     aria-modal="true"
     aria-labelledby="key-dialog-title"
   >
-    <p class="kicker">bring your own key</p>
-    <h2 id="key-dialog-title">Add your AI Gateway key</h2>
-    <p class="body">
-      This demo is public, so the agent runs on <em>your</em> Vercel AI
-      Gateway key — every message you send spends your credits, nobody
-      else's. Create a free key in the Vercel dashboard under
+    <p
+      class="m-0 font-mono text-[10.5px] font-semibold tracking-[0.14em] text-gray-600 uppercase"
+    >
+      bring your own key
+    </p>
+    <h2
+      id="key-dialog-title"
+      class="m-0 text-xl leading-[26px] font-semibold tracking-[-0.4px] text-gray-1000"
+    >
+      Add Your AI Gateway Key
+    </h2>
+    <p class="m-0 text-[13px] leading-[18px] text-muted-foreground">
+      This demo is public, so the agent runs on
+      <em class="font-semibold text-foreground not-italic">your</em> Vercel AI Gateway key — every
+      message you send spends your credits, nobody else's. Create a free key in the Vercel
+      dashboard under
       <a
+        class="text-foreground underline decoration-alpha-500 underline-offset-4 hover:decoration-alpha-800"
         href="https://vercel.com/docs/ai-gateway"
         target="_blank"
         rel="noreferrer">AI Gateway → API keys</a
@@ -73,15 +89,22 @@
     </p>
 
     <form
+      class="mt-1 flex flex-col gap-2.5"
       onsubmit={(e) => {
         e.preventDefault();
         void validateAndSave();
       }}
     >
-      <label class="field-label" for="gateway-key">AI gateway api key</label>
-      <input
+      <Label
+        for="gateway-key"
+        class="font-mono text-[10px] font-semibold tracking-[0.12em] text-gray-600 uppercase"
+      >
+        AI Gateway API Key
+      </Label>
+      <Input
         id="gateway-key"
         type="password"
+        class="font-mono max-sm:text-base"
         placeholder="vck_…"
         autocomplete="off"
         spellcheck="false"
@@ -90,248 +113,44 @@
       />
 
       {#if error}
-        <p class="error">{error}</p>
+        <p class="m-0 text-xs text-red-900">{error}</p>
       {/if}
 
-      <div class="actions">
-        <button
+      <div class="mt-0.5 flex flex-wrap gap-2">
+        <Button
           type="submit"
-          class="btn primary"
+          class="max-sm:flex-1"
           disabled={checking || draft.trim().length === 0}
         >
-          {checking ? "Checking…" : "Validate & enter"}
-        </button>
+          {checking ? "Checking…" : "Validate & Enter"}
+        </Button>
         {#if !required}
-          <button type="button" class="btn ghost" onclick={onClose}>
+          <Button type="button" variant="outline" class="max-sm:flex-1" onclick={onClose}>
             Cancel
-          </button>
+          </Button>
         {/if}
       </div>
     </form>
 
     {#if gatewayKey.hint}
-      <div class="saved">
-        <span>A key ending in <code>…{gatewayKey.hint}</code> is saved.</span>
-        <button type="button" class="link" onclick={removeKey}>
-          Remove it
+      <div class="flex items-center gap-2.5 text-xs text-muted-foreground">
+        <span>
+          A key ending in
+          <code class="font-mono text-foreground">…{gatewayKey.hint}</code> is saved.
+        </span>
+        <button
+          type="button"
+          class="cursor-pointer border-none bg-transparent p-0 text-xs text-foreground underline decoration-alpha-500 underline-offset-4 hover:decoration-alpha-800"
+          onclick={removeKey}
+        >
+          Remove It
         </button>
       </div>
     {/if}
 
-    <p class="fine-print">
+    <p class="m-0 mt-0.5 text-[11.5px] leading-4 text-gray-600">
       The key stays in this browser and is attached to your chat sessions
       server-side while they run. Rotate or revoke it anytime in Vercel.
     </p>
   </div>
 </div>
-
-<style>
-  .overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(5, 5, 6, 0.7);
-    backdrop-filter: blur(8px);
-  }
-
-  .dialog {
-    width: min(480px, 100%);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
-  }
-
-  .kicker {
-    margin: 0;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-  }
-
-  h2 {
-    margin: 0;
-    font-size: 19px;
-    font-weight: 600;
-    letter-spacing: -0.015em;
-    color: #fff;
-  }
-
-  .body {
-    margin: 0;
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--text-dim);
-  }
-
-  .body em {
-    color: var(--text);
-    font-style: normal;
-    font-weight: 600;
-  }
-
-  .body a {
-    color: var(--text);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    text-decoration-color: rgba(255, 255, 255, 0.3);
-  }
-
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 4px;
-  }
-
-  .field-label {
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-  }
-
-  input {
-    width: 100%;
-    box-sizing: border-box;
-    background: #0d0d10;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 10px;
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 13px;
-    padding: 10px 13px;
-    transition:
-      border-color 0.15s,
-      background 0.15s;
-  }
-
-  input:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-    background: #101014;
-  }
-
-  .error {
-    margin: 0;
-    font-size: 12.5px;
-    color: var(--red);
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 2px;
-  }
-
-  .btn {
-    border-radius: 999px;
-    padding: 9px 18px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-
-  .btn:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  .btn.primary {
-    background: #fff;
-    color: #0a0a0c;
-    transition:
-      transform 0.12s,
-      box-shadow 0.12s;
-  }
-
-  .btn.primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.18);
-  }
-
-  .btn.ghost {
-    background: transparent;
-    color: #c8c8ce;
-    border-color: rgba(255, 255, 255, 0.16);
-    transition:
-      border-color 0.15s,
-      color 0.15s;
-  }
-
-  .btn.ghost:hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.4);
-    color: #fff;
-  }
-
-  .saved {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    color: var(--text-dim);
-  }
-
-  .saved code {
-    font-family: var(--mono);
-    color: var(--text);
-  }
-
-  .link {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 12px;
-    color: var(--text);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    text-decoration-color: rgba(255, 255, 255, 0.3);
-    cursor: pointer;
-  }
-
-  .fine-print {
-    margin: 2px 0 0;
-    font-size: 11.5px;
-    line-height: 1.5;
-    color: var(--text-faint);
-  }
-
-  @media (max-width: 640px) {
-    .overlay {
-      padding: 14px;
-      align-items: flex-end;
-    }
-
-    .dialog {
-      padding: 22px 18px;
-      max-height: 85dvh;
-      overflow-y: auto;
-      margin-bottom: 10px;
-    }
-
-    input {
-      /* 16px stops iOS Safari from zooming the page on focus. */
-      font-size: 16px;
-    }
-
-    .actions .btn {
-      flex: 1;
-      padding: 11px 18px;
-    }
-  }
-</style>

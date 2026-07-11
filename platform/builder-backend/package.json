@@ -1,0 +1,19 @@
+{
+  "name": "builder-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "typecheck": "tsc -p convex/tsconfig.json --noEmit",
+    "deploy:web": "static-hosting upload --dist ../builder-web/dist"
+  },
+  "dependencies": {
+    "@convex-dev/static-hosting": "^0.1.4",
+    "convex": "^1.42.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

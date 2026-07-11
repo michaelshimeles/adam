@@ -10,15 +10,17 @@ export const probe = internalAction({
   returns: v.object({
     node: v.string(),
     bundlePath: v.string(),
+    version: v.string(),
     exports: v.array(v.string()),
     worldInstalled: v.boolean(),
   }),
-  handler: async () => {
-    const { bundle, bundlePath } = await loadEveBundle();
+  handler: async (ctx) => {
+    const { bundle, bundlePath, version } = await loadEveBundle(ctx);
     const world = await bundle.getWorld();
     return {
       node: process.version,
       bundlePath,
+      version,
       exports: ["POST", "dispatchChannelRequest", "getWorld"].filter(
         (k) =>
           typeof (bundle as unknown as Record<string, unknown>)[

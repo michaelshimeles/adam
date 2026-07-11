@@ -1,0 +1,16 @@
+{
+  "name": "platform-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "deploy:cli": "node src/cli.mjs"
+  },
+  "dependencies": {
+    "convex": "^1.42.1"
+  }
+}
