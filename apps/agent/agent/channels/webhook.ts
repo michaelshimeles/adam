@@ -1,4 +1,4 @@
-import { defineChannel, POST } from "eve/channels";
+import { defineChannel, POST, type SessionHandle } from "eve/channels";
 
 /**
  * Generic inbound webhook channel.
@@ -17,7 +17,8 @@ import { defineChannel, POST } from "eve/channels";
  * - `replyUrl` (optional) gets a POST with the agent's completed replies:
  *   { sessionId, conversationId, message }. Without it the webhook is
  *   fire-and-forget (the turn still runs durably; transcripts are visible
- *   in the dashboard).
+ *   in the dashboard). Must be a public http(s) URL — private, link-local,
+ *   and cloud-metadata addresses are rejected at intake (SSRF guard).
  *
  * Auth is a shared secret in the WEBHOOK_CHANNEL_SECRET env var — set on
  * the Convex deployment (the builder pipeline generates one per agent).
@@ -37,8 +38,81 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-export default defineChannel<WebhookState>({
+/**
+ * Constant-time string comparison for the shared secret (content-independent
+ * timing; length still leaks, which is fine for random tokens).
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    // charCodeAt is NaN out of range; ^ coerces NaN to 0.
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * SSRF guard: replies may only go to public http(s) endpoints. Blocks
+ * loopback/private/link-local IP literals (including the cloud metadata
+ * address 169.254.169.254) and obvious internal hostnames. Defense in depth
+ * on top of the channel secret; redirects are refused at fetch time too.
+ */
+function isBlockedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    if (a === 0 || a === 10 || a === 127) return true; // this-net, private, loopback
+    if (a === 169 && b === 254) return true; // link-local + cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true; // private
+    if (a === 192 && b === 168) return true; // private
+    if (a === 100 && b >= 64 && b <= 127) return true; // carrier-grade NAT
+    if (a >= 224) return true; // multicast + reserved
+    return false;
+  }
+  if (host.includes(":")) {
+    // IPv6 literal — allow only clearly-global addresses.
+    if (host === "::" || host === "::1") return true; // unspecified, loopback
+    if (host.startsWith("::ffff:")) return true; // v4-mapped
+    if (/^f[cd]/.test(host)) return true; // fc00::/7 unique-local
+    if (/^fe[89ab]/.test(host)) return true; // fe80::/10 link-local
+  }
+  return false;
+}
+
+/**
+ * Returns the normalized reply URL, or null when it isn't an acceptable
+ * public http(s) endpoint. WHATWG URL parsing canonicalizes integer/hex
+ * IPv4 forms (http://2130706433/ → 127.0.0.1) before the host check, so
+ * encoded literals can't sneak past. DNS names that *resolve* to private
+ * ranges are out of scope here (would need resolver pinning).
+ */
+function parseReplyUrl(raw: string): string | null {
+  if (raw.length > 2048) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (url.username || url.password) return null;
+  if (isBlockedHost(url.hostname)) return null;
+  return url.toString();
+}
+
+export default defineChannel<
+  WebhookState,
+  { state: WebhookState; session: { id: string } }
+>({
   state: { replyUrl: null, conversationId: null },
+
+  // Expose durable state + session id to event handlers (typed channel arg).
+  context: (state, session: SessionHandle) => ({ state, session }),
 
   routes: [
     POST("/webhook", async (req, { send }) => {
@@ -48,7 +122,8 @@ export default defineChannel<WebhookState>({
           error: "webhook channel not configured (WEBHOOK_CHANNEL_SECRET unset)",
         });
       }
-      if (req.headers.get("x-webhook-secret") !== secret) {
+      const provided = req.headers.get("x-webhook-secret") ?? "";
+      if (!timingSafeEqual(provided, secret)) {
         return json(401, { error: "unauthorized" });
       }
 
@@ -68,10 +143,16 @@ export default defineChannel<WebhookState>({
         typeof body.conversationId === "string" && body.conversationId.trim()
           ? body.conversationId.trim()
           : crypto.randomUUID();
-      const replyUrl =
-        typeof body.replyUrl === "string" && body.replyUrl.startsWith("http")
-          ? body.replyUrl
-          : null;
+      let replyUrl: string | null = null;
+      if (typeof body.replyUrl === "string" && body.replyUrl.trim()) {
+        replyUrl = parseReplyUrl(body.replyUrl.trim());
+        if (!replyUrl) {
+          return json(400, {
+            error:
+              '"replyUrl" must be a public http(s) URL (private and internal addresses are not allowed)',
+          });
+        }
+      }
 
       const session = await send(message, {
         auth: {
@@ -103,6 +184,8 @@ export default defineChannel<WebhookState>({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: payload,
+        // A vetted public URL must not bounce us to an internal address.
+        redirect: "error",
       }).then(
         () => undefined,
         (err) => {

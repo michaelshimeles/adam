@@ -1,10 +1,11 @@
 <script lang="ts">
   import { useQuery } from "convex-svelte";
   import { agentsApi } from "../api";
+  import { authArgs } from "../auth.svelte";
 
   let { jobId }: { jobId: string } = $props();
 
-  const logs = useQuery(agentsApi.jobLogs, () => ({ jobId }));
+  const logs = useQuery(agentsApi.jobLogs, () => ({ jobId, ...authArgs() }));
 
   function kind(line: string): string {
     if (line.startsWith("=====")) return "font-bold text-amber-900";

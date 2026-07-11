@@ -1,7 +1,22 @@
 /** Shared guards/helpers for the builder backend. */
 
+import { ConvexError } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+
+/**
+ * Constant-time string comparison for shared secrets (content-independent
+ * timing; length still leaks, which is fine for random tokens).
+ */
+export function timingSafeEqual(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    // charCodeAt is NaN out of range; ^ coerces NaN to 0.
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
 
 /**
  * Require the platform worker secret (PLATFORM_WORKER_SECRET env var on this
@@ -14,8 +29,25 @@ export function requireWorkerSecret(secret: string): void {
   if (!expected) {
     throw new Error("PLATFORM_WORKER_SECRET is not configured on this deployment");
   }
-  if (secret !== expected) {
+  if (!timingSafeEqual(secret, expected)) {
     throw new Error("Invalid worker secret");
+  }
+}
+
+/**
+ * Optional access gate for the dashboard API (`agents:*`). When the
+ * BUILDER_DASHBOARD_SECRET env var is set on the deployment, every dashboard
+ * call must carry the matching secret (the web UI asks for it once and keeps
+ * it in localStorage). When unset — local dev, throwaway demos — the
+ * dashboard stays open, matching the original single-tenant behavior.
+ */
+export function requireDashboardSecret(secret: string | undefined): void {
+  const expected = process.env.BUILDER_DASHBOARD_SECRET;
+  if (!expected) return; // gate disabled
+  if (!secret || !timingSafeEqual(secret, expected)) {
+    // ConvexError so the message survives prod redaction — the web UI keys
+    // its unlock screen off this exact string.
+    throw new ConvexError("Invalid dashboard secret");
   }
 }
 

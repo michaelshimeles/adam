@@ -1,6 +1,7 @@
 <script lang="ts">
   import { useConvexClient, useQuery } from "convex-svelte";
   import { agentsApi } from "../api";
+  import { authArgs } from "../auth.svelte";
   import { duration, timeAgo } from "../format";
   import JobLog from "./JobLog.svelte";
   import StatusChip from "./StatusChip.svelte";
@@ -19,8 +20,8 @@
 
   const client = useConvexClient();
 
-  const agentQ = useQuery(agentsApi.get, () => ({ agentId }));
-  const jobQ = useQuery(agentsApi.latestJob, () => ({ agentId }));
+  const agentQ = useQuery(agentsApi.get, () => ({ agentId, ...authArgs() }));
+  const jobQ = useQuery(agentsApi.latestJob, () => ({ agentId, ...authArgs() }));
 
   const agent = $derived(agentQ.data ?? null);
   const job = $derived(jobQ.data ?? null);
@@ -39,7 +40,7 @@
     deploying = true;
     deployError = null;
     try {
-      await client.mutation(agentsApi.requestDeploy, { agentId });
+      await client.mutation(agentsApi.requestDeploy, { agentId, ...authArgs() });
     } catch (err) {
       deployError = err instanceof Error ? err.message : String(err);
     } finally {
@@ -52,7 +53,7 @@
     removing = true;
     deployError = null;
     try {
-      await client.mutation(agentsApi.remove, { agentId });
+      await client.mutation(agentsApi.remove, { agentId, ...authArgs() });
     } catch (err) {
       deployError = err instanceof Error ? err.message : String(err);
     } finally {

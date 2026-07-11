@@ -88,40 +88,54 @@ export type AgentConfigInput = {
   channels: AgentChannels;
 };
 
+/**
+ * Every dashboard call optionally carries the access secret; required when
+ * the deployment sets BUILDER_DASHBOARD_SECRET (see lib/auth.svelte.ts).
+ */
+type DashboardAuth = { dashboardSecret?: string };
+
 export const agentsApi = {
-  list: makeFunctionReference<"query", Record<string, never>, AgentSummary[]>(
+  list: makeFunctionReference<"query", DashboardAuth, AgentSummary[]>(
     "agents:list",
   ),
-  get: makeFunctionReference<"query", { agentId: string }, AgentSummary | null>(
-    "agents:get",
-  ),
+  get: makeFunctionReference<
+    "query",
+    DashboardAuth & { agentId: string },
+    AgentSummary | null
+  >("agents:get"),
   create: makeFunctionReference<
     "mutation",
-    AgentConfigInput & { aiGatewayApiKey?: string },
+    DashboardAuth & AgentConfigInput & { aiGatewayApiKey?: string },
     string
   >("agents:create"),
   update: makeFunctionReference<
     "mutation",
-    AgentConfigInput & { agentId: string; aiGatewayApiKey?: string },
+    DashboardAuth & AgentConfigInput & { agentId: string; aiGatewayApiKey?: string },
     null
   >("agents:update"),
-  requestDeploy: makeFunctionReference<"mutation", { agentId: string }, string>(
-    "agents:requestDeploy",
-  ),
-  remove: makeFunctionReference<"mutation", { agentId: string }, null>(
-    "agents:remove",
-  ),
+  requestDeploy: makeFunctionReference<
+    "mutation",
+    DashboardAuth & { agentId: string },
+    string
+  >("agents:requestDeploy"),
+  remove: makeFunctionReference<
+    "mutation",
+    DashboardAuth & { agentId: string },
+    null
+  >("agents:remove"),
   latestJob: makeFunctionReference<
     "query",
-    { agentId: string },
+    DashboardAuth & { agentId: string },
     DeployJob | null
   >("agents:latestJob"),
-  jobLogs: makeFunctionReference<"query", { jobId: string }, JobLogLine[]>(
-    "agents:jobLogs",
-  ),
+  jobLogs: makeFunctionReference<
+    "query",
+    DashboardAuth & { jobId: string },
+    JobLogLine[]
+  >("agents:jobLogs"),
   workerHeartbeat: makeFunctionReference<
     "query",
-    Record<string, never>,
+    DashboardAuth,
     number | null
   >("agents:workerHeartbeat"),
 };

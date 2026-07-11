@@ -2,6 +2,7 @@
   import { useConvexClient } from "convex-svelte";
   import type { AgentSummary } from "../api";
   import { agentsApi, MODEL_SUGGESTIONS, PREFILL_GATEWAY_KEY } from "../api";
+  import { authArgs } from "../auth.svelte";
   import { Alert, AlertDescription } from "ui/components/alert";
   import { Button } from "ui/components/button";
   import { Checkbox } from "ui/components/checkbox";
@@ -89,6 +90,7 @@ You are a helpful, durable agent running on Convex.
         await client.mutation(agentsApi.update, {
           agentId: agent._id,
           ...config,
+          ...authArgs(),
           // Only replace the stored key when a new one was typed.
           ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
         });
@@ -96,6 +98,7 @@ You are a helpful, durable agent running on Convex.
       } else {
         const id = await client.mutation(agentsApi.create, {
           ...config,
+          ...authArgs(),
           ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
         });
         onDone(id);

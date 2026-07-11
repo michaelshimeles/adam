@@ -2,16 +2,22 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { agentConfig } from "./schema";
-import { purgeAgentRows, slugify } from "./lib";
+import { purgeAgentRows, requireDashboardSecret, slugify } from "./lib";
 
 /**
  * Public UI surface for the builder dashboard.
  *
- * NOTE: like the agent backend's demo endpoints, these are intentionally
- * unauthenticated for the prototype — the builder runs as a single-tenant
- * demo. A real product would wrap these in authed custom functions and
- * scope agents to their owner.
+ * Access control: every function takes an optional `dashboardSecret` checked
+ * against the BUILDER_DASHBOARD_SECRET env var (lib.ts). Set it on deployed
+ * builders so only holders of the secret can manage agents; leave it unset
+ * for open local-dev/demo use. A multi-tenant product would replace this
+ * with real user auth and per-owner scoping.
  */
+
+/** Shared arg: dashboard access secret (required when the env gate is set). */
+const dashboardAuthArgs = {
+  dashboardSecret: v.optional(v.string()),
+};
 
 const agentSummary = v.object({
   _id: v.id("agents"),
@@ -32,9 +38,9 @@ const agentSummary = v.object({
   bundleVersion: v.optional(v.string()),
   /**
    * Shared secret callers put in x-webhook-secret. Exposing it to the
-   * dashboard is the point (users wire it into their external systems);
-   * the builder is a single-tenant demo — a real product would show it
-   * only to the agent's owner.
+   * dashboard is the point (users wire it into their external systems).
+   * Reads are behind the dashboard gate when BUILDER_DASHBOARD_SECRET is
+   * set; a multi-tenant product would show it only to the agent's owner.
    */
   webhookSecret: v.optional(v.string()),
   lastDeployedAt: v.optional(v.number()),
@@ -86,30 +92,34 @@ function validateConfig(args: {
 }
 
 export const list = query({
-  args: {},
+  args: { ...dashboardAuthArgs },
   returns: v.array(agentSummary),
-  handler: async (ctx) => {
-    // Single-tenant demo dashboard: the agent list is small and bounded.
+  handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
+    // Single-tenant dashboard: the agent list is small and bounded.
     const agents = await ctx.db.query("agents").order("desc").take(100);
     return agents;
   },
 });
 
 export const get = query({
-  args: { agentId: v.id("agents") },
+  args: { ...dashboardAuthArgs, agentId: v.id("agents") },
   returns: v.union(agentSummary, v.null()),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     return await ctx.db.get(args.agentId);
   },
 });
 
 export const create = mutation({
   args: {
+    ...dashboardAuthArgs,
     ...configArgs,
     aiGatewayApiKey: v.optional(v.string()),
   },
   returns: v.id("agents"),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     validateConfig(args);
     const now = Date.now();
     const key = args.aiGatewayApiKey?.trim();
@@ -137,6 +147,7 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
+    ...dashboardAuthArgs,
     agentId: v.id("agents"),
     ...configArgs,
     /** Omit to keep the stored key; pass a value to replace it; "" clears. */
@@ -144,6 +155,7 @@ export const update = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     const agent = await ctx.db.get(args.agentId);
     if (!agent) throw new Error("Agent not found");
     if (agent.status === "deploying") {
@@ -193,9 +205,10 @@ export const update = mutation({
 
 /** Queue a deploy job for the worker. No-op guard against double-queueing. */
 export const requestDeploy = mutation({
-  args: { agentId: v.id("agents") },
+  args: { ...dashboardAuthArgs, agentId: v.id("agents") },
   returns: v.id("deployJobs"),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     const agent = await ctx.db.get(args.agentId);
     if (!agent) throw new Error("Agent not found");
     if (agent.status === "deleting") {
@@ -239,9 +252,10 @@ export const requestDeploy = mutation({
  *   teardown log links the dashboard page for manual removal.
  */
 export const remove = mutation({
-  args: { agentId: v.id("agents") },
+  args: { ...dashboardAuthArgs, agentId: v.id("agents") },
   returns: v.null(),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     const agent = await ctx.db.get(args.agentId);
     if (!agent) return null; // already gone — deleting is idempotent
     if (agent.status === "deploying") {
@@ -302,9 +316,10 @@ const jobShape = v.object({
 });
 
 export const latestJob = query({
-  args: { agentId: v.id("agents") },
+  args: { ...dashboardAuthArgs, agentId: v.id("agents") },
   returns: v.union(jobShape, v.null()),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     return await ctx.db
       .query("deployJobs")
       .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
@@ -314,11 +329,12 @@ export const latestJob = query({
 });
 
 export const jobLogs = query({
-  args: { jobId: v.id("deployJobs") },
+  args: { ...dashboardAuthArgs, jobId: v.id("deployJobs") },
   returns: v.array(
     v.object({ seq: v.number(), line: v.string(), createdAt: v.number() }),
   ),
   handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     // Deploy logs are bounded (worker truncates long lines, ~few hundred
     // rows per job); cap the read defensively.
     const rows = await ctx.db
@@ -332,9 +348,10 @@ export const jobLogs = query({
 
 /** Dashboard needs to know whether a worker has polled recently. */
 export const workerHeartbeat = query({
-  args: {},
+  args: { ...dashboardAuthArgs },
   returns: v.union(v.number(), v.null()),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
     const doc = await ctx.db.query("workerHeartbeats").order("desc").first();
     return doc?.lastSeen ?? null;
   },

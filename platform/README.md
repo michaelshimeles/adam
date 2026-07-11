@@ -52,6 +52,8 @@ One-time (already provisioned for this repo — deployment
 cd platform/builder-backend
 npx convex dev --once --configure new --team <team> --project <name> --dev-deployment cloud
 npx convex env set PLATFORM_WORKER_SECRET <random-hex>
+# optional but recommended for deployed builders: lock the dashboard API
+npx convex env set BUILDER_DASHBOARD_SECRET <random-hex>
 ```
 
 Then two processes:
@@ -80,12 +82,16 @@ list left, config form / detail + streaming deploy log right.
 - **Worker API** (`worker:claim/setStep/appendLogs/complete`) is gated by
   `PLATFORM_WORKER_SECRET`, same trust model as the agent backend's
   `WORLD_SERVICE_SECRET`.
+- **Dashboard API** (`agents:*`) honors an optional access secret: set
+  `BUILDER_DASHBOARD_SECRET` on the builder deployment and the web UI shows
+  an unlock screen (the secret is kept in localStorage and sent with every
+  call). Leave it unset for open local-dev use.
 
 ## Prototype caveats (before this is a product)
 
-- Builder UI endpoints (`agents:*`) are unauthenticated single-tenant demo
-  endpoints — a real deployment wraps them in authed custom functions and
-  scopes agents to owners.
+- Builder access is a single shared secret (`BUILDER_DASHBOARD_SECRET`),
+  not per-user auth — a real deployment wraps `agents:*` in authed custom
+  functions and scopes agents to owners.
 - Gateway keys are stored plaintext in `agentSecrets`; vault/KMS-encrypt them.
 - Provisioning uses the operator's Convex CLI login and creates **dev cloud**
   deployments; production would use the Management API with a team access
