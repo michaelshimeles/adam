@@ -18,11 +18,28 @@ import { OWNER, withGatewayKey } from "./gatewayKeyLock";
  *   non-2xx / throw      → fail (backoff; dead-letter after maxFails)
  * There is no transport-error case: the handler runs in this process.
  *
+ * Long turns vs the ~10-minute node action ceiling: two cooperating budgets
+ * keep deliveries clear of the platform kill.
+ *
+ *  1. The eve flow handler self-yields. Its run loop checks
+ *     WORKFLOW_V2_TIMEOUT_MS (pinned in runner/bundle.ts, default 120s) at
+ *     every step boundary; past the budget it enqueues a continuation flow
+ *     message for the run and returns — so one multi-step turn straddles as
+ *     many deliveries (and therefore actions) as it needs, replaying its
+ *     event log and skipping completed steps each time.
+ *  2. The tick stops claiming new work once it can no longer give a
+ *     delivery a full reserve of wall clock (SAFE_BUDGET_MS −
+ *     DELIVERY_RESERVE_MS), and hands off to a freshly scheduled successor
+ *     tick that starts with a whole window.
+ *
  * While a delivery is running, a heartbeat keeps the job's lease alive so
  * the requeueExpired cron doesn't hand it to another tick. If this action
- * dies (deploy, crash, 10-minute action limit), the lease expires and the
- * cron requeues the job — the workflow replays deterministically from its
- * event log, which is exactly the crash-recovery story eve has on any host.
+ * still dies mid-delivery (deploy, crash, or a single step body outrunning
+ * the remaining window — the one case the budgets can't cover), the lease
+ * expires and the cron requeues the job; the workflow replays
+ * deterministically from its event log. Repeated lease recoveries without a
+ * normal settle dead-letter the job (see world/queue.ts) instead of crash-
+ * looping forever.
  *
  * BYOK: the bundled runtime resolves model credentials from
  * process.env.AI_GATEWAY_API_KEY at request time. Each flow job's runId is
@@ -39,12 +56,32 @@ const LEASE_MS = 2 * 60 * 1000;
 const HEARTBEAT_MS = 45_000;
 const FAIL_BACKOFF_MS = 5_000;
 const CLAIM_BATCH = 4;
-/** Leave headroom under the 10-minute node action ceiling. */
-const MAX_WALL_MS = 8 * 60 * 1000;
+/**
+ * Total wall clock a tick allows itself, with headroom under the 10-minute
+ * node action ceiling for the final delivery's settle mutations and stream
+ * flush. Override per deployment for tests: RUNNER_SAFE_BUDGET_MS.
+ */
+const SAFE_BUDGET_MS_DEFAULT = 9.5 * 60 * 1000;
+/**
+ * Minimum window a delivery must have left before the tick will start it.
+ * Sized to the flow handler's own yield budget (WORKFLOW_V2_TIMEOUT_MS,
+ * 120s) plus slack for the step body in flight when that budget expires —
+ * the handler only checks it between steps. Override for tests:
+ * RUNNER_DELIVERY_RESERVE_MS.
+ */
+const DELIVERY_RESERVE_MS_DEFAULT = 4 * 60 * 1000;
 /** Key row not there yet (chat:send commits it right after the enqueue). */
 const KEY_WAIT_RETRY_MS = 500;
 /** Give up on a job whose session never registered a key. */
 const KEY_WAIT_MAX_MS = 90_000;
+
+/** Positive-number env override, read per invocation (env can change). */
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 type ClaimedJob = {
   jobId: import("../_generated/dataModel").Id<"queueJobs">;
@@ -149,11 +186,26 @@ export const tick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
+    const startedAt = Date.now();
+    const safeBudgetMs = envMs("RUNNER_SAFE_BUDGET_MS", SAFE_BUDGET_MS_DEFAULT);
+    const reserveMs = envMs(
+      "RUNNER_DELIVERY_RESERVE_MS",
+      DELIVERY_RESERVE_MS_DEFAULT,
+    );
     const { bundle } = await loadEveBundle(ctx);
     const workerId = `convex_runner_${crypto.randomUUID().slice(0, 8)}`;
-    const deadline = Date.now() + MAX_WALL_MS;
 
-    while (Date.now() < deadline) {
+    let handedOff = false;
+    for (let iteration = 0; ; iteration++) {
+      // Claim another batch only while a delivery started now would still
+      // get its full reserve; otherwise hand off to a successor tick that
+      // begins with a whole action window. The first claim is unconditional
+      // so every tick makes progress — otherwise a misconfigured budget
+      // (reserve >= budget) would chain no-op successors forever.
+      if (iteration > 0 && Date.now() - startedAt > safeBudgetMs - reserveMs) {
+        handedOff = true;
+        break;
+      }
       const jobs = (await ctx.runMutation(internal.world.queue.runnerClaim, {
         workerId,
         now: Date.now(),
@@ -173,6 +225,13 @@ export const tick = internalAction({
           Promise.all(bucket.map((job) => deliver(ctx, bundle, workerId, job))),
         );
       }
+    }
+
+    if (handedOff) {
+      // Settled deliveries schedule their own wakes, but jobs that were due
+      // and never claimed have none — without this they'd stall until the
+      // minutely sweep cron. A successor that finds nothing due is a no-op.
+      await ctx.scheduler.runAfter(0, internal.runner.engine.tick, {});
     }
 
     // Any stream writes the handler awaited have flushed; this covers
@@ -200,14 +259,20 @@ async function deliver(
   heartbeat.unref?.();
 
   try {
-    // eve 0.22 registers only the flow route: steps execute inline in the
-    // flow invocation (turbo), so a step-queue job here means a config bug.
+    // Invariant check: eve 0.22 never enqueues to a step queue. Steps run
+    // inline in the flow invocation, and background/overflow steps (parallel
+    // fan-out past WORKFLOW_MAX_INLINE_STEPS, step retries) ride the
+    // WORKFLOW queue as flow messages carrying {runId, stepId, stepName} —
+    // the flow handler executes exactly that step. The bundle registers only
+    // the flow route, so a __*_wkf_step_* job signals a protocol regression
+    // (e.g. an eve upgrade that reintroduced the step route) and must fail
+    // loudly rather than 400 forever against the flow handler.
     if (job.queuePrefix.includes("_wkf_step_")) {
       await ctx.runMutation(internal.world.queue.runnerFail, {
         jobId: job.jobId,
         workerId,
         error:
-          "convex runner: step queue jobs are not supported (steps run inline in the flow handler)",
+          "convex runner: unexpected step-queue job (eve 0.22 delivers background steps as flow messages; a step-queue message means the eve queue protocol changed — update runner/engine.ts)",
         backoffMs: FAIL_BACKOFF_MS,
       });
       return;
@@ -241,6 +306,11 @@ async function deliver(
           "content-type": "application/json",
           "x-vqs-queue-name": queueName,
           "x-vqs-message-id": job.messageId,
+          // failCount + 1, NOT the claim count: parity with the world-convex
+          // HTTP pump. The handler compares this against its max-deliveries
+          // cap, and long-lived session jobs legitimately reschedule
+          // (timeoutSeconds) hundreds of times — only consecutive failed
+          // deliveries may count toward giving up on the message.
           "x-vqs-message-attempt": String(job.failCount + 1),
         },
         body: job.payloadJson,
