@@ -136,6 +136,28 @@ async function waitForTurn(sessionId, startSeq) {
   return { sawDone, nextSeq: seq, busySamples, samples, sawError };
 }
 
+/**
+ * Advance past everything already in the session stream (terminal events of
+ * a finished turn can trail in after its completion is first observed) so
+ * the next phase's wait can only be satisfied by events of its own turn.
+ */
+async function drainSession(sessionId, fromSeq, quietMs = 2_500) {
+  let seq = fromSeq;
+  let quietSince = Date.now();
+  while (Date.now() - quietSince < quietMs) {
+    const page = await client.query("ui:sessionEvents", {
+      sessionId,
+      startSeq: seq,
+    });
+    if (page && page.nextSeq > seq) {
+      seq = page.nextSeq;
+      quietSince = Date.now();
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return seq;
+}
+
 /** Steps named after the tool, on runs created since the phase started. */
 async function toolSteps(sinceMs, toolName) {
   const runs = await client.query("ui:listRuns", { limit: 30 });
@@ -220,6 +242,7 @@ async function phaseStraddle() {
 async function phaseFanout(sessionId, startSeq) {
   console.log("\n== phase 2: parallel fan-out as per-step flow messages ==");
   await envSetForTest("WORKFLOW_MAX_INLINE_STEPS", "1");
+  startSeq = await drainSession(sessionId, startSeq);
   const t0 = Date.now();
   const message =
     `In a single response, call simulate_long_task four times in parallel — ` +

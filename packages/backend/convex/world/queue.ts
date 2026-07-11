@@ -102,7 +102,9 @@ async function enqueueImpl(
       .withIndex("by_jobKey", (q) => q.eq("jobKey", args.jobKey))
       .first();
     if (existing && existing.state === "pending") {
-      // graphile-worker jobKey semantics: replace the pending job.
+      // graphile-worker jobKey semantics: replace the pending job. The
+      // replacement is a logically new message, so consecutive-failure
+      // bookkeeping (failCount, recoveredCount) starts over with it.
       await ctx.db.patch(existing._id, {
         queueName: args.queueName,
         queuePrefix: args.queuePrefix,
@@ -114,6 +116,7 @@ async function enqueueImpl(
         runAfter,
         attempt: args.attempt ?? existing.attempt,
         failCount: 0,
+        recoveredCount: undefined,
         updatedAt: now,
       });
       await scheduleRunnerTick(ctx, delayMs);
