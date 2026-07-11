@@ -178,6 +178,12 @@ export default defineSchema({
     /** Consecutive failed deliveries (reset by successful reschedule) */
     failCount: v.number(),
     maxFails: v.number(),
+    /**
+     * Consecutive lease-expiry recoveries (worker died mid-delivery: crash,
+     * deploy, action kill). Reset by any normal settle; at the cap the job
+     * dead-letters instead of crash-looping — see world/queue.ts.
+     */
+    recoveredCount: v.optional(v.number()),
     leaseUntil: v.optional(v.number()),
     claimedBy: v.optional(v.string()),
     lastError: v.optional(v.string()),

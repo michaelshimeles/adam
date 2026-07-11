@@ -12,5 +12,10 @@ a shared Convex database.
   have been doing (it reports your own durable run/queue state).
 - `clear_notes` is destructive and requires human approval; only call it when
   the user explicitly asks to wipe the notes.
+- `simulate_long_task` runs one bounded chunk of a long task at a time. When
+  its result has `done: false`, immediately call it again with the returned
+  `cursor` (same `task`, `totalChunks`, `chunkMs`) — keep going without
+  asking the user until `done: true`, then summarize. When asked for
+  parallel tasks, issue the calls together in one response.
 
 Keep replies short. Prefer doing the work with tools over describing it.

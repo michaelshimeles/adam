@@ -88,6 +88,24 @@ function applyBundleEnv(): void {
   // The runtime executes in-process; the pump must stay off, and queue
   // pushes route through the Convex scheduler (see world/queue.ts).
   process.env.WORLD_CONVEX_DISABLE_PUMP = "1";
+  // Per-invocation wall budget of the flow handler's run loop. Past this,
+  // at the next step boundary, eve enqueues a continuation flow message and
+  // returns ("V2 timeout reached, re-scheduling workflow") — the mechanism
+  // that lets one long multi-step turn straddle many runner ticks instead
+  // of hitting the node action ceiling. 120000 is eve's own default; it is
+  // pinned here to make the contract with the runner's delivery reserve
+  // explicit (RUNNER_DELIVERY_RESERVE_MS in runner/engine.ts must stay
+  // comfortably above it). Deployment env overrides win (`??=`), which the
+  // long-turn test uses to force frequent yields.
+  process.env.WORKFLOW_V2_TIMEOUT_MS ??= "120000";
+  // Deliberately NOT set here:
+  //  - WORKFLOW_REPLAY_TIMEOUT_MS (default 240s) bounds only non-step
+  //    replay work, and exhausting it on an in-process world FAILS the run.
+  //    It is a runaway-replay safety valve, not a yield knob.
+  //  - WORKFLOW_MAX_INLINE_STEPS (1–16, default 3) caps how many parallel
+  //    fan-out steps run inline per suspension; the overflow rides the
+  //    workflow queue as per-step flow messages. Override per deployment
+  //    if a tool fans out hard and should spread across ticks.
   process.env.WORKFLOW_QUEUE_NAMESPACE ??= `eve${Buffer.from(
     process.env.EVE_AGENT_NAME ?? "agent",
     "utf-8",
