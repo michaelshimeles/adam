@@ -1,11 +1,13 @@
 <script lang="ts">
   import { gatewayKey } from "../apiKey.svelte";
+  import { AGENT_MODEL, BRAND_NAME, IS_AGENT_APP, WEBHOOK_ENABLED } from "../brand";
   import ApiKeyDialog from "./ApiKeyDialog.svelte";
   import Chat from "./Chat.svelte";
   import NotesPanel from "./NotesPanel.svelte";
   import QueueChips from "./QueueChips.svelte";
   import RunDetail from "./RunDetail.svelte";
   import RunsPanel from "./RunsPanel.svelte";
+  import WebhookPanel from "./WebhookPanel.svelte";
 
   let selectedRunId = $state<string | null>(null);
   let keyDialogOpen = $state(false);
@@ -14,34 +16,45 @@
   const keyRequired = $derived(gatewayKey.value === null);
 </script>
 
-<div class="dashboard">
-  <header class="topbar">
-    <a class="brand" href="#/" title="Back to the homepage">
-      <span class="logo-mark">▲</span>
-      <span class="logo-name">adam</span>
-      <span class="slash">/</span>
-      <span class="logo-eve">☰ eve</span>
-      <span class="x">×</span>
-      <span class="logo-convex">convex</span>
-      <span class="tagline">durable agents · reactive backend</span>
+<div class="flex min-h-0 flex-1 flex-col">
+  <header
+    class="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b bg-background/70 px-3.5 backdrop-blur-md md:px-6"
+  >
+    <a
+      class="flex items-baseline gap-2.5 text-sm text-foreground no-underline"
+      href="#/"
+      title={IS_AGENT_APP ? BRAND_NAME : "Back to the homepage"}
+    >
+      <span>▲</span>
+      <span class="font-semibold tracking-[-0.28px]">{BRAND_NAME}</span>
+      <span class="hidden font-mono text-xs text-gray-600 sm:inline">
+        {IS_AGENT_APP && AGENT_MODEL ? AGENT_MODEL : "eve × convex"}
+      </span>
     </a>
-    <div class="topbar-right">
+    <div class="flex min-w-0 flex-wrap items-center justify-end gap-2 gap-y-1">
       <QueueChips />
       <button
-        class="key-chip"
+        class="inline-flex cursor-pointer items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100"
         title="Your AI Gateway key — chats spend your own credits"
         onclick={() => (keyDialogOpen = true)}
       >
-        <span class="k">key</span>
-        <span class="v">{gatewayKey.hint ? `…${gatewayKey.hint}` : "none"}</span>
+        <span class="text-[10px] font-medium tracking-[0.04em] text-gray-600 uppercase">key</span>
+        <span class="font-mono font-medium text-foreground">
+          {gatewayKey.hint ? `…${gatewayKey.hint}` : "none"}
+        </span>
       </button>
     </div>
   </header>
 
-  <main>
+  <main
+    class="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_368px] lg:overflow-visible lg:px-6 lg:pb-5"
+  >
     <Chat />
-    <div class="rail">
+    <div class="flex min-h-[500px] flex-col gap-4 lg:min-h-0">
       <NotesPanel />
+      {#if WEBHOOK_ENABLED}
+        <WebhookPanel />
+      {/if}
       <RunsPanel onSelect={(runId) => (selectedRunId = runId)} />
     </div>
   </main>
@@ -59,175 +72,12 @@
 </div>
 
 <style>
-  .dashboard {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    min-height: var(--nav-h);
-    padding: 0 26px;
-    background: rgba(5, 5, 6, 0.72);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    flex-shrink: 0;
-  }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    font-size: 13.5px;
-    text-decoration: none;
-    color: inherit;
-  }
-
-  .logo-mark {
-    font-size: 11px;
-    transform: translateY(-1px);
-  }
-
-  .logo-name {
-    font-weight: 700;
-    letter-spacing: 0.01em;
-  }
-
-  .slash {
-    color: #3c3c44;
-  }
-
-  .logo-eve {
-    color: #c8c8ce;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-  }
-
-  .x {
-    color: #4a4a52;
-    font-size: 11px;
-  }
-
-  .logo-convex {
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .tagline {
-    margin-left: 10px;
-    color: var(--text-faint);
-    font-size: 11.5px;
-    letter-spacing: 0.03em;
-  }
-
-  .topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .key-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 4px 12px;
-    border-radius: 999px;
-    background: #0d0d10;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    font-size: 11.5px;
-    color: inherit;
-    cursor: pointer;
-    transition: border-color 0.15s;
-  }
-
-  .key-chip:hover {
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  .key-chip .k {
-    color: var(--text-faint);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    font-size: 10px;
-    font-weight: 600;
-  }
-
-  .key-chip .v {
-    color: var(--text);
-    font-family: var(--mono);
-    font-weight: 700;
-  }
-
-  main {
-    flex: 1;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
-    gap: 14px;
-    padding: 14px 26px 18px;
-    min-height: 0;
-  }
-
-  .rail {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-height: 0;
-  }
-
-  @media (max-width: 980px) {
-    main {
-      grid-template-columns: 1fr;
-      overflow-y: auto;
-    }
-
-    /* Stacked layout scrolls; give each panel a real height. */
-    main > :global(.chat) {
+  /* Stacked (mobile/tablet) layout scrolls; give the chat a real height. */
+  @media (max-width: 960px) {
+    main > :global([data-chat]) {
       flex: none;
-      height: calc(100dvh - var(--nav-h) - 32px);
+      height: calc(100dvh - 4rem - 2rem);
       min-height: 420px;
-    }
-
-    .rail {
-      min-height: 500px;
-    }
-
-    .tagline {
-      display: none;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .topbar {
-      padding: 0 14px;
-      gap: 10px;
-    }
-
-    /* Keep the brand to "▲ adam" so the chips fit. */
-    .slash,
-    .logo-eve,
-    .x,
-    .logo-convex {
-      display: none;
-    }
-
-    .topbar-right {
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      row-gap: 4px;
-      min-width: 0;
-    }
-
-    main {
-      padding: 10px 12px 14px;
-      gap: 12px;
     }
   }
 </style>

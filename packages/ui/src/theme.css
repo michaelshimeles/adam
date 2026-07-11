@@ -1,0 +1,272 @@
+/*
+ * Geist (Vercel) design system — Dark theme.
+ *
+ * Import order in an app:
+ *   @import "tailwindcss";
+ *   @import "ui/theme.css";
+ *   @source "../../../packages/ui/src";   (path from the app css to this package)
+ *
+ * Geist scale semantics (per non-background color family):
+ *   100 bg · 200 hover bg · 300 active bg · 400 border · 500 hover border ·
+ *   600 active border · 700 solid fill · 800 solid hover · 900 secondary
+ *   text/icons · 1000 primary text/icons.
+ * So a status chip is e.g. `bg-green-100 border-green-400 text-green-900`.
+ */
+@import "tw-animate-css";
+@import "shadcn-svelte/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+	color-scheme: dark;
+
+	/* shadcn semantic tokens ← Geist dark */
+	--background: #000000; /* background-100 */
+	--foreground: #ededed; /* gray-1000 */
+	--card: #000000;
+	--card-foreground: #ededed;
+	--popover: #000000;
+	--popover-foreground: #ededed;
+	--primary: #ededed; /* button-primary: gray-1000 fill, black label */
+	--primary-foreground: #000000;
+	--secondary: #1a1a1a; /* gray-100 */
+	--secondary-foreground: #ededed;
+	--muted: #1a1a1a; /* gray-100 */
+	--muted-foreground: #a0a0a0; /* gray-900 */
+	--accent: #1f1f1f; /* gray-200 (hover bg) */
+	--accent-foreground: #ededed;
+	--destructive: #e2162a; /* red-800 (button-error) */
+	--border: #ffffff24; /* gray-alpha-400 */
+	--input: #ffffff24;
+	--ring: #47a8ff; /* blue-900 focus ring */
+	--chart-1: #0090ff;
+	--chart-2: #47a8ff;
+	--chart-3: #006efe;
+	--chart-4: #005be7;
+	--chart-5: #00418b;
+	--radius: 0.375rem; /* 6px — everyday surfaces and controls */
+}
+
+/* Both apps are dark-only; keep .dark in sync so `dark:` utilities apply. */
+.dark {
+	color-scheme: dark;
+}
+
+@theme inline {
+	--font-sans:
+		"Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	--font-mono:
+		"Geist Mono Variable", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+	/* Geist breakpoints */
+	--breakpoint-sm: 401px;
+	--breakpoint-md: 601px;
+	--breakpoint-lg: 961px;
+	--breakpoint-xl: 1200px;
+	--breakpoint-2xl: 1400px;
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+
+	/* Geist radii: 6px controls/surfaces · 12px menus/modals · 16px fullscreen */
+	--radius-sm: 0.375rem;
+	--radius-md: 0.375rem;
+	--radius-lg: 0.375rem;
+	--radius-xl: 0.75rem;
+	--radius-2xl: 1rem;
+	--radius-3xl: 1rem;
+	--radius-4xl: 1rem;
+
+	/* Geist dark elevation */
+	--shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.16);
+	--shadow-menu:
+		0 1px 1px rgba(0, 0, 0, 0.02), 0 4px 8px -4px rgba(0, 0, 0, 0.04),
+		0 16px 24px -8px rgba(0, 0, 0, 0.06);
+	--shadow-modal:
+		0 1px 1px rgba(0, 0, 0, 0.02), 0 8px 16px -4px rgba(0, 0, 0, 0.04),
+		0 24px 32px -8px rgba(0, 0, 0, 0.06);
+
+	/* ---- Geist color scales (replace Tailwind defaults) ---- */
+	--color-gray-*: initial;
+	--color-gray-100: #1a1a1a;
+	--color-gray-200: #1f1f1f;
+	--color-gray-300: #292929;
+	--color-gray-400: #2e2e2e;
+	--color-gray-500: #454545;
+	--color-gray-600: #878787;
+	--color-gray-700: #8f8f8f;
+	--color-gray-800: #7d7d7d;
+	--color-gray-900: #a0a0a0;
+	--color-gray-1000: #ededed;
+
+	--color-alpha-*: initial;
+	--color-alpha-100: #ffffff12;
+	--color-alpha-200: #ffffff17;
+	--color-alpha-300: #ffffff21;
+	--color-alpha-400: #ffffff24;
+	--color-alpha-500: #ffffff3d;
+	--color-alpha-600: #ffffff82;
+	--color-alpha-700: #ffffff8a;
+	--color-alpha-800: #ffffff78;
+	--color-alpha-900: #ffffff9c;
+	--color-alpha-1000: #ffffffeb;
+
+	--color-blue-*: initial;
+	--color-blue-100: #06193a;
+	--color-blue-200: #022248;
+	--color-blue-300: #002f62;
+	--color-blue-400: #003674;
+	--color-blue-500: #00418b;
+	--color-blue-600: #0090ff;
+	--color-blue-700: #006efe;
+	--color-blue-800: #005be7;
+	--color-blue-900: #47a8ff;
+	--color-blue-1000: #eaf6ff;
+
+	--color-red-*: initial;
+	--color-red-100: #330a11;
+	--color-red-200: #440d13;
+	--color-red-300: #5d0e17;
+	--color-red-400: #6f101b;
+	--color-red-500: #88151f;
+	--color-red-600: #f32e40;
+	--color-red-700: #f13242;
+	--color-red-800: #e2162a;
+	--color-red-900: #ff565f;
+	--color-red-1000: #ffe9ed;
+
+	--color-amber-*: initial;
+	--color-amber-100: #2a1700;
+	--color-amber-200: #361900;
+	--color-amber-300: #502800;
+	--color-amber-400: #5b3000;
+	--color-amber-500: #703e00;
+	--color-amber-600: #ed9a00;
+	--color-amber-700: #ffae00;
+	--color-amber-800: #ff9300;
+	--color-amber-900: #ff9300;
+	--color-amber-1000: #fff3d5;
+
+	--color-green-*: initial;
+	--color-green-100: #002608;
+	--color-green-200: #00320b;
+	--color-green-300: #003a0e;
+	--color-green-400: #004615;
+	--color-green-500: #006717;
+	--color-green-600: #00952d;
+	--color-green-700: #00ac3a;
+	--color-green-800: #009432;
+	--color-green-900: #00ca50;
+	--color-green-1000: #d8ffe4;
+
+	--color-teal-*: initial;
+	--color-teal-100: #00231b;
+	--color-teal-200: #002b22;
+	--color-teal-300: #003d34;
+	--color-teal-400: #004035;
+	--color-teal-500: #006354;
+	--color-teal-600: #009e86;
+	--color-teal-700: #00aa95;
+	--color-teal-800: #00927f;
+	--color-teal-900: #00cfb7;
+	--color-teal-1000: #cbfff5;
+
+	--color-purple-*: initial;
+	--color-purple-100: #290c33;
+	--color-purple-200: #341142;
+	--color-purple-300: #47185e;
+	--color-purple-400: #541a76;
+	--color-purple-500: #642290;
+	--color-purple-600: #9440d5;
+	--color-purple-700: #9440d5;
+	--color-purple-800: #7d2bba;
+	--color-purple-900: #c472fb;
+	--color-purple-1000: #fbecff;
+
+	--color-pink-*: initial;
+	--color-pink-100: #310d1e;
+	--color-pink-200: #420c25;
+	--color-pink-300: #571032;
+	--color-pink-400: #5d0c34;
+	--color-pink-500: #76063f;
+	--color-pink-600: #ba0056;
+	--color-pink-700: #f12b82;
+	--color-pink-800: #e7006d;
+	--color-pink-900: #ff4d8d;
+	--color-pink-1000: #ffe9f4;
+}
+
+@layer base {
+	* {
+		@apply border-border;
+	}
+
+	html {
+		@apply font-sans;
+	}
+
+	body {
+		@apply bg-background text-foreground text-sm antialiased;
+	}
+
+	/* Geist two-layer focus ring: 2px surface gap + 2px blue-900. */
+	:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 2px var(--background),
+			0 0 0 4px var(--ring);
+	}
+
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	::-webkit-scrollbar-thumb {
+		background: #2e2e2e; /* gray-400 */
+		border-radius: 9999px;
+		border: 2px solid transparent;
+		background-clip: padding-box;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	@media (pointer: coarse) {
+		* {
+			-webkit-tap-highlight-color: transparent;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		*::before,
+		*::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+		}
+	}
+}

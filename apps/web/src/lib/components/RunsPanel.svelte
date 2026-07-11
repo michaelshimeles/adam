@@ -3,42 +3,45 @@
   import { api } from "../api";
   import { timeAgo, workflowLabel } from "../format";
   import { getNow } from "../now.svelte";
+  import StatusPill from "./StatusPill.svelte";
 
   let { onSelect }: { onSelect: (runId: string) => void } = $props();
 
   const runs = useQuery(api.listRuns, { limit: 30 });
 </script>
 
-<section class="panel">
-  <header>
-    <h2>Workflow runs</h2>
-    <span class="sub">durable state in Convex</span>
+<section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
+  <header class="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b px-4">
+    <h2 class="m-0 font-mono text-[11px] font-semibold tracking-[0.08em] text-foreground uppercase">
+      Workflow Runs
+    </h2>
+    <span class="font-mono text-[11px] text-gray-600">durable state</span>
   </header>
 
   {#if runs.isLoading}
-    <div class="empty">Loading…</div>
+    <div class="px-4 py-5 text-center text-xs text-muted-foreground">Loading…</div>
   {:else if runs.error}
-    <div class="empty error">Can't reach Convex</div>
+    <div class="px-4 py-5 text-center text-xs text-red-900">Can't reach Convex</div>
   {:else if runs.data.length === 0}
-    <div class="empty">
-      No runs yet — send the agent a message and its workflow run will appear
-      here.
+    <div class="px-4 py-5 text-xs leading-5 text-muted-foreground">
+      No runs yet. Send the agent a message and its workflow run appears here.
     </div>
   {:else}
-    <ul>
+    <ul class="m-0 flex min-h-0 list-none flex-col divide-y overflow-y-auto p-0">
       {#each runs.data as run (run.runId)}
         <li>
-          <button class="run" onclick={() => onSelect(run.runId)}>
-            <div class="row">
-              <span class="name" title={run.workflowName}>
+          <button
+            class="flex w-full cursor-pointer flex-col gap-1 px-4 py-2.5 text-left text-foreground transition-colors duration-150 hover:bg-gray-100"
+            onclick={() => onSelect(run.runId)}
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="truncate text-[13px] font-medium" title={run.workflowName}>
                 {workflowLabel(run.workflowName)}
               </span>
-              <span class="pill {run.status}">
-                <span class="dot"></span>{run.status}
-              </span>
+              <StatusPill status={run.status} />
             </div>
-            <div class="row meta">
-              <span class="id">{run.runId.slice(0, 18)}…</span>
+            <div class="flex items-center justify-between gap-2 font-mono text-[11px] text-gray-600">
+              <span>{run.runId.slice(0, 18)}…</span>
               <span>{timeAgo(run.updatedAt, getNow())}</span>
             </div>
           </button>
@@ -47,110 +50,3 @@
     </ul>
   {/if}
 </section>
-
-<style>
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
-    padding: 18px;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1;
-  }
-
-  header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
-
-  h2 {
-    margin: 0;
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #ededf0;
-  }
-
-  .sub {
-    font-size: 10.5px;
-    color: var(--text-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    font-weight: 600;
-  }
-
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-height: 0;
-  }
-
-  .run {
-    width: 100%;
-    text-align: left;
-    background: var(--panel-2);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: 9px 12px;
-    color: inherit;
-    cursor: pointer;
-    transition:
-      border-color 120ms ease,
-      background 120ms ease;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .run:hover {
-    border-color: rgba(255, 255, 255, 0.18);
-    background: #17171c;
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .name {
-    font-size: 12.5px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .meta {
-    font-size: 11px;
-    color: var(--text-faint);
-  }
-
-  .id {
-    font-family: var(--mono);
-  }
-
-  .empty {
-    color: var(--text-faint);
-    font-size: 12.5px;
-    padding: 18px 6px;
-    text-align: center;
-    line-height: 1.5;
-  }
-
-  .empty.error {
-    color: var(--red);
-  }
-</style>

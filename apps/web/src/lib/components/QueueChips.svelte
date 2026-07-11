@@ -1,84 +1,42 @@
 <script lang="ts">
   import { useQuery } from "convex-svelte";
   import { api } from "../api";
+  import { Badge } from "ui/components/badge";
 
   const health = useQuery(api.queueHealth, {});
 </script>
 
-<div class="chips">
+<div class="flex gap-1.5 md:gap-2">
   {#if health.data}
-    <span class="chip" title="Jobs waiting for the eve host to claim">
-      <span class="k">queue</span>
-      <span class="v">{health.data.pending}</span>
-    </span>
-    <span class="chip" title="Jobs currently leased by the eve host">
-      <span class="k">in flight</span>
-      <span class="v">{health.data.claimed}</span>
-    </span>
-    <span class="chip" class:bad={health.data.dead > 0} title="Jobs that exhausted retries">
-      <span class="k">dead</span>
-      <span class="v">{health.data.dead}</span>
-    </span>
+    <Badge variant="outline" title="Jobs waiting for the eve host to claim">
+      <span class="text-[10px] tracking-[0.04em] uppercase">queue</span>
+      <span class="font-mono font-medium text-foreground tabular-nums">{health.data.pending}</span>
+    </Badge>
+    <Badge variant="outline" title="Jobs currently leased by the eve host">
+      <span class="text-[10px] tracking-[0.04em] uppercase">in flight</span>
+      <span class="font-mono font-medium text-foreground tabular-nums">{health.data.claimed}</span>
+    </Badge>
+    <Badge
+      variant="outline"
+      class={health.data.dead > 0 ? "border-red-400 bg-red-100 text-red-900" : ""}
+      title="Jobs that exhausted retries"
+    >
+      <span class="text-[10px] tracking-[0.04em] uppercase">dead</span>
+      <span
+        class="font-mono font-medium tabular-nums {health.data.dead > 0
+          ? 'text-red-900'
+          : 'text-foreground'}">{health.data.dead}</span
+      >
+    </Badge>
   {:else if health.error}
-    <span class="chip bad"><span class="k">convex</span><span class="v">offline</span></span>
+    <Badge variant="outline" class="border-red-400 bg-red-100 text-red-900">
+      <span class="text-[10px] tracking-[0.04em] uppercase">convex</span>
+      <span class="font-mono font-medium">offline</span>
+    </Badge>
   {:else}
-    <span class="chip dim"><span class="k">queue</span><span class="v">…</span></span>
+    <Badge variant="outline">
+      <span class="text-[10px] tracking-[0.04em] uppercase">queue</span>
+      <span class="font-mono">…</span>
+    </Badge>
   {/if}
 </div>
-
-<style>
-  .chips {
-    display: flex;
-    gap: 8px;
-  }
-
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 4px 12px;
-    border-radius: 999px;
-    background: #0d0d10;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    font-size: 11.5px;
-  }
-
-  .chip .k {
-    color: var(--text-faint);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    font-size: 10px;
-    font-weight: 600;
-  }
-
-  .chip .v {
-    color: var(--text);
-    font-family: var(--mono);
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .chip.bad {
-    border-color: rgba(255, 98, 112, 0.4);
-    background: rgba(255, 98, 112, 0.08);
-  }
-
-  .chip.bad .v {
-    color: var(--red);
-  }
-
-  .chip.dim .v {
-    color: var(--text-faint);
-  }
-
-  @media (max-width: 640px) {
-    .chips {
-      gap: 5px;
-    }
-
-    .chip {
-      padding: 4px 9px;
-      gap: 5px;
-    }
-  }
-</style>

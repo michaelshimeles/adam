@@ -149,7 +149,7 @@ export const tick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { bundle } = await loadEveBundle();
+    const { bundle } = await loadEveBundle(ctx);
     const workerId = `convex_runner_${crypto.randomUUID().slice(0, 8)}`;
     const deadline = Date.now() + MAX_WALL_MS;
 
