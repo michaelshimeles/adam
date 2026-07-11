@@ -27,10 +27,18 @@ import { requireServiceSecret } from "../lib/auth";
  *   internal mutations below (same logic, no service secret).
  *
  * Leases guard against a crashed worker in both modes: `requeueExpired`
- * (cron) flips expired claims back to pending.
+ * (cron) flips expired claims back to pending. `recoveredCount` tracks how
+ * many times in a row that recovery fired without the job ever reaching a
+ * normal settle (complete / reschedule / release / fail): each recovery is
+ * a worker that died mid-delivery, and since crash-requeues bypass
+ * `failCount` entirely, a delivery that can never finish (e.g. a single
+ * workflow step that outruns the node action ceiling) would otherwise
+ * requeue forever. At MAX_LEASE_RECOVERIES the job dead-letters with a
+ * descriptive error instead.
  */
 
 const DEFAULT_MAX_FAILS = 3;
+const MAX_LEASE_RECOVERIES = 5;
 
 function convexExecutionMode(): boolean {
   return process.env.WORLD_EXECUTION_MODE === "convex";
@@ -349,6 +357,7 @@ async function rescheduleImpl(
     state: "pending",
     runAfter: now + delayMs,
     failCount: 0,
+    recoveredCount: undefined,
     leaseUntil: undefined,
     claimedBy: undefined,
     lastError: undefined,
@@ -395,6 +404,7 @@ async function releaseImpl(
     // The claim consumed an attempt for a delivery that never happened;
     // hand it back so transport blips don't erode the delivery budget.
     attempt: Math.max(0, job.attempt - 1),
+    recoveredCount: undefined,
     leaseUntil: undefined,
     claimedBy: undefined,
     updatedAt: now,
@@ -459,6 +469,7 @@ async function failImpl(
     state: "pending",
     runAfter: now + backoffMs,
     failCount,
+    recoveredCount: undefined,
     lastError: args.error,
     leaseUntil: undefined,
     claimedBy: undefined,
@@ -499,7 +510,13 @@ export const runnerFail = internalMutation({
 // maintenance crons
 // ---------------------------------------------------------------------------
 
-/** Cron: flip expired claims back to pending so a crashed worker can't strand jobs. */
+/**
+ * Cron: flip expired claims back to pending so a crashed worker can't strand
+ * jobs. Each recovery bumps `recoveredCount`; a job recovered
+ * MAX_LEASE_RECOVERIES times in a row without a normal settle is stuck in a
+ * crash loop (typically a single step body that outruns the action window)
+ * and dead-letters instead, with the loop explained in `lastError`.
+ */
 export const requeueExpired = internalMutation({
   args: {},
   returns: v.number(),
@@ -511,16 +528,39 @@ export const requeueExpired = internalMutation({
       .collect();
     let requeued = 0;
     for (const job of claimed) {
-      if (job.leaseUntil !== undefined && job.leaseUntil < now) {
+      if (job.leaseUntil === undefined || job.leaseUntil >= now) continue;
+      const recoveredCount = (job.recoveredCount ?? 0) + 1;
+      if (recoveredCount >= MAX_LEASE_RECOVERIES) {
         await ctx.db.patch(job._id, {
-          state: "pending",
-          runAfter: now,
+          state: "dead",
+          recoveredCount,
+          lastError:
+            `lease expired ${recoveredCount} consecutive times without a ` +
+            "normal settle — the worker keeps dying mid-delivery (most " +
+            "likely a single workflow step exceeds the action time " +
+            "budget). Dead-lettered to stop the crash loop; fix the step " +
+            "(chunk it or move the long work behind a hook), then " +
+            "`npx convex run world/queue:reviveDead`.",
           leaseUntil: undefined,
           claimedBy: undefined,
           updatedAt: now,
         });
-        requeued += 1;
+        console.error("[queue] dead-lettered after repeated lease expiries", {
+          queueName: job.queueName,
+          messageId: job.messageId,
+          recoveredCount,
+        });
+        continue;
       }
+      await ctx.db.patch(job._id, {
+        state: "pending",
+        runAfter: now,
+        recoveredCount,
+        leaseUntil: undefined,
+        claimedBy: undefined,
+        updatedAt: now,
+      });
+      requeued += 1;
     }
     if (requeued > 0) {
       await scheduleRunnerTick(ctx, 0);
@@ -567,6 +607,7 @@ export const reviveDead = internalMutation({
         state: "pending",
         runAfter: now,
         failCount: 0,
+        recoveredCount: undefined,
         lastError: undefined,
         updatedAt: now,
       });
