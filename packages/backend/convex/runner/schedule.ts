@@ -21,7 +21,13 @@ export const heartbeat = internalAction({
   args: {},
   returns: v.object({ sessionIds: v.array(v.string()) }),
   handler: async (ctx) => {
-    const { bundle } = await loadEveBundle();
+    const { bundle } = await loadEveBundle(ctx);
+    if (typeof bundle.dispatchScheduleTask !== "function") {
+      throw new Error(
+        "this agent bundle was built without schedules — remove the " +
+          "heartbeat cron or add agent/schedules/*.md and rebuild",
+      );
+    }
     const result = (await bundle.dispatchScheduleTask(
       scheduleTaskName("schedules/heartbeat.md"),
       { dev: false },

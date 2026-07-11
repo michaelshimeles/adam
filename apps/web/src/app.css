@@ -1,140 +1,20 @@
-:root {
-  --bg: #050506;
-  --bg-raise: #0a0a0d;
-  --panel: #0c0c0f;
-  --panel-2: #141419;
-  --border: rgba(255, 255, 255, 0.14);
-  --border-soft: rgba(255, 255, 255, 0.07);
-  --text: #ededf0;
-  --text-dim: #9a9aa4;
-  --text-faint: #6a6a74;
-  --accent: #ee5d3a;
-  --accent-2: #f3b01c;
-  --accent-soft: rgba(238, 93, 58, 0.14);
-  --green: #3fce8b;
-  --blue: #5aa7ff;
-  --amber: #f3b01c;
-  --red: #ff6270;
-  --gray: #7d8598;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --nav-h: 63px;
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
-    sans-serif;
-}
+@import "tailwindcss";
+@import "ui/theme.css";
 
-* {
-  box-sizing: border-box;
-}
+/* The shared ui package lives outside this app dir — scan it for classes. */
+@source "../../../packages/ui/src";
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
+@layer base {
+	html,
+	body {
+		height: 100%;
+	}
 
-body {
-  background:
-    radial-gradient(900px 480px at 50% -8%, rgba(255, 255, 255, 0.05), transparent 65%),
-    var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-
-#app {
-  height: 100vh;
-  /* Mobile browsers: track the visible viewport as browser chrome shows/hides. */
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-}
-
-@media (pointer: coarse) {
-  * {
-    -webkit-tap-highlight-color: transparent;
-  }
-}
-
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: #2c2c33;
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-button {
-  font-family: inherit;
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-
-.pill.completed {
-  color: var(--green);
-  background: rgba(63, 206, 139, 0.1);
-  border-color: rgba(63, 206, 139, 0.25);
-}
-.pill.running {
-  color: var(--blue);
-  background: rgba(90, 167, 255, 0.1);
-  border-color: rgba(90, 167, 255, 0.25);
-}
-.pill.pending {
-  color: var(--amber);
-  background: rgba(243, 176, 28, 0.1);
-  border-color: rgba(243, 176, 28, 0.25);
-}
-.pill.failed {
-  color: var(--red);
-  background: rgba(255, 98, 112, 0.1);
-  border-color: rgba(255, 98, 112, 0.3);
-}
-.pill.cancelled {
-  color: var(--gray);
-  background: rgba(125, 133, 152, 0.1);
-  border-color: rgba(125, 133, 152, 0.25);
-}
-
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-
-.pill.running .dot {
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.25;
-  }
+	#app {
+		height: 100vh;
+		/* Mobile browsers: track the visible viewport as browser chrome shows/hides. */
+		height: 100dvh;
+		display: flex;
+		flex-direction: column;
+	}
 }

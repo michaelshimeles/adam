@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as bundles from "../bundles.js";
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -22,6 +23,7 @@ import type * as lib_validators from "../lib/validators.js";
 import type * as lib_worldStore from "../lib/worldStore.js";
 import type * as notes from "../notes.js";
 import type * as runner_bundle from "../runner/bundle.js";
+import type * as runner_channels from "../runner/channels.js";
 import type * as runner_engine from "../runner/engine.js";
 import type * as runner_modelKeyLock from "../runner/modelKeyLock.js";
 import type * as runner_probe from "../runner/probe.js";
@@ -42,6 +44,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  bundles: typeof bundles;
   chat: typeof chat;
   crons: typeof crons;
   http: typeof http;
@@ -56,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "lib/worldStore": typeof lib_worldStore;
   notes: typeof notes;
   "runner/bundle": typeof runner_bundle;
+  "runner/channels": typeof runner_channels;
   "runner/engine": typeof runner_engine;
   "runner/modelKeyLock": typeof runner_modelKeyLock;
   "runner/probe": typeof runner_probe;

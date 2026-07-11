@@ -57,6 +57,7 @@ server. One Convex deployment runs and stores everything:
 | `packages/world-convex` | Implementation of `@workflow/world` (Storage + Queue + Streamer) backed by the Convex deployment. Compiled into the eve bundle via `experimental.workflow.world` |
 | `apps/agent` | The eve project: agent definition, Convex-backed tools (`save_note`, `list_notes`, `clear_notes` w/ HITL approval, `workflow_stats`), heartbeat schedule. Built with `eve build`, never started as a server |
 | `apps/web` | Svelte 5 + convex-svelte dashboard: chat with the agent (streaming + HITL), live notepad, run/step/event/stream observability |
+| `platform/*` | The **agent builder**: configure an agent (model, instructions, tools, schedule) in a dashboard and one-click deploy it to its own Convex project. See [platform/README.md](platform/README.md) |
 
 ## How the port works
 
@@ -64,7 +65,8 @@ server. One Convex deployment runs and stores everything:
    bundle: the agent loop, model calls, tool defs, the Workflow SDK runtime,
    and `world-convex` all in one file. `scripts/vendor-eve.mjs` copies it into
    `packages/backend/eve-runtime/bundle/` (the Nitro HTTP entrypoint is
-   deliberately excluded).
+   deliberately excluded) and generates `entry.mjs` with stable names for the
+   bundle's minified exports (they change every build).
 2. **Execute** — eve's engine is stateless request/response at its core: flow
    jobs arrive as HTTP `Request`s and return `{ok}` or `{timeoutSeconds}`.
    `convex/runner/engine.ts` (a `"use node"` action) imports the bundle,
@@ -209,20 +211,28 @@ older than 7 days either way.
 cd packages/backend
 npx convex deploy
 # set the same env vars as the quickstart on prod (--prod), with a strong
-# WORLD_SERVICE_SECRET and CONVEX_URL=https://<name>.convex.cloud
+# WORLD_SERVICE_SECRET and CONVEX_URL=https://<name>.convex.cloud — but do
+# NOT set EVE_BUNDLE_PATH on cloud deployments (see below)
+
+# ship the agent bundle into the deployment's file storage:
+CONVEX_URL=https://<name>.convex.cloud \
+WORLD_SERVICE_SECRET=<secret> node scripts/upload-bundle.mjs
 
 # dashboard → Convex static hosting, from the repo root:
 VITE_CONVEX_URL=https://<name>.convex.cloud pnpm deploy:web
 # served at https://<name>.convex.site, SPA-fallback included
 ```
 
-**Cloud caveat:** the runner currently loads the eve bundle with a dynamic
-`import(EVE_BUNDLE_PATH)`. On a **local dev deployment** Node actions run on
-your machine, so the vendored path resolves and everything above works. On
-**Convex Cloud**, actions run in Convex's environment where that path doesn't
-exist — you'd need to ship the bundle differently (publish it as a package and
-mark it as a node external, or self-host Convex). This repo demonstrates the
-architecture end-to-end against a local deployment.
+**How the bundle reaches Convex Cloud:** on cloud deployments node actions
+run in Convex's environment, so a local `EVE_BUNDLE_PATH` directory doesn't
+exist there. When `EVE_BUNDLE_PATH` is unset, the runner instead resolves the
+active `eveBundles` manifest (pushed by `scripts/upload-bundle.mjs`),
+downloads its files from Convex file storage into `/tmp`, and imports the
+bundle from there (`runner/bundle.ts`). The active version is re-checked on
+every load, so uploading a new bundle hot-swaps the agent on the next action —
+no `convex deploy` needed for agent-only changes. Convex Cloud's node runtime
+currently matches `eve build`'s Node 24 output, verified end-to-end (probe,
+heartbeat schedule, chat turn with tools, HITL approval).
 
 ## Tests
 
@@ -257,9 +267,12 @@ re-vendors the eve bundle.
   and the AI Gateway for model credentials (OpenRouter works as a drop-in
   alternative — see BYOK below).
 - **Env vars the runner needs** (see quickstart): `CONVEX_URL`,
-  `WORLD_SERVICE_SECRET`, `WORLD_EXECUTION_MODE=convex`, `EVE_BUNDLE_PATH`,
-  and model credentials. `WORKFLOW_QUEUE_NAMESPACE` / `WORLD_CONVEX_DISABLE_PUMP`
-  are derived/pinned automatically by `runner/bundle.ts`.
+  `WORLD_SERVICE_SECRET`, `WORLD_EXECUTION_MODE=convex`, and model
+  credentials. `EVE_BUNDLE_PATH` is optional: set it for local dev (import
+  straight from the checkout); leave it unset to load the bundle uploaded to
+  file storage (required on Convex Cloud). `WORKFLOW_QUEUE_NAMESPACE` /
+  `WORLD_CONVEX_DISABLE_PUMP` are derived/pinned automatically by
+  `runner/bundle.ts`.
 - **Classic mode still exists.** Unset `WORLD_EXECUTION_MODE` and run
   `npx eve dev` in `apps/agent` and the system reverts to eve-as-external-host
   with the world-convex pump delivering jobs over HTTP. Don't run both at

@@ -1,0 +1,6 @@
+# Never ship local env to Vercel builds — .env.local holds the local-dev
+# AI gateway key prefill, and Vite would bake any VITE_* var into the bundle.
+.env
+.env.*
+dist
+node_modules

@@ -200,6 +200,32 @@ export default defineSchema({
   }),
 
   /**
+   * Versioned manifests of the compiled eve bundle, stored as files in
+   * Convex file storage. This is how the agent runtime reaches deployments
+   * whose node actions run off-machine (Convex Cloud): the runner downloads
+   * the active manifest's files to /tmp and dynamic-imports from there
+   * (see runner/bundle.ts). Exactly one row is active at a time; uploading
+   * a new bundle hot-swaps the agent without a code deploy.
+   */
+  eveBundles: defineTable({
+    /** Content hash of the bundle files (stable across identical uploads) */
+    version: v.string(),
+    files: v.array(
+      v.object({
+        /** Relative path inside the bundle dir, e.g. "_libs/eve.mjs" */
+        path: v.string(),
+        storageId: v.id("_storage"),
+        size: v.number(),
+        sha256: v.string(),
+      }),
+    ),
+    active: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_active", ["active"])
+    .index("by_version", ["version"]),
+
+  /**
    * BYOK: visitor-supplied model API keys (Vercel AI Gateway or OpenRouter),
    * keyed by session run id (sessionId === the session workflow's runId).
    * The runner injects the session's key before delivering its jobs, so

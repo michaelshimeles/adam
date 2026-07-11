@@ -60,7 +60,7 @@ export const send = action({
       };
     }
 
-    const { bundle } = await loadEveBundle();
+    const { bundle } = await loadEveBundle(ctx);
 
     // Continuing a session: persist the key before the turn enqueues so the
     // runner can never claim the job first and find no key.

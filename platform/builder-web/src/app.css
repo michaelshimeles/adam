@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "ui/theme.css";
+
+/* The shared ui package lives outside this app dir — scan it for classes. */
+@source "../../../packages/ui/src";
