@@ -1,43 +1,81 @@
 /**
- * The visitor's Vercel AI Gateway key (BYOK). The deployment is public, so
- * chat turns run on the visitor's own gateway credits: the dashboard asks
- * for a key up front, keeps it in localStorage, and chat:send carries it on
- * every call.
+ * The visitor's model API key (BYOK) — either a Vercel AI Gateway key or an
+ * OpenRouter key. The deployment is public, so chat turns run on the
+ * visitor's own credits: the dashboard asks for a key up front, keeps it in
+ * localStorage, and chat:send carries it (with its provider) on every call.
  */
 
-const STORAGE_KEY = "eve-convex-gateway-key";
+export type ModelProvider = "gateway" | "openrouter";
 
-function load(): string | null {
+const STORAGE_KEY = "eve-convex-model-key";
+/** Pre-OpenRouter storage: a bare gateway key string. */
+const LEGACY_STORAGE_KEY = "eve-convex-gateway-key";
+
+interface StoredKey {
+  provider: ModelProvider;
+  key: string;
+}
+
+export const PROVIDER_LABELS: Record<ModelProvider, string> = {
+  gateway: "Vercel AI Gateway",
+  openrouter: "OpenRouter",
+};
+
+function load(): StoredKey | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw && raw.trim().length > 0 ? raw : null;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<StoredKey>;
+      if (
+        typeof parsed.key === "string" &&
+        parsed.key.trim().length > 0 &&
+        (parsed.provider === "gateway" || parsed.provider === "openrouter")
+      ) {
+        return { provider: parsed.provider, key: parsed.key };
+      }
+    }
+    // Migrate a key saved before the provider choice existed.
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy && legacy.trim().length > 0) {
+      const migrated: StoredKey = { provider: "gateway", key: legacy };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      return migrated;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-let key = $state<string | null>(load());
+let stored = $state<StoredKey | null>(load());
 
-export const gatewayKey = {
+export const modelKey = {
   get value(): string | null {
-    return key;
+    return stored?.key ?? null;
+  },
+  get provider(): ModelProvider | null {
+    return stored?.provider ?? null;
+  },
+  get providerLabel(): string | null {
+    return stored ? PROVIDER_LABELS[stored.provider] : null;
   },
   /** Last characters for the "key saved" chip — never the full key. */
   get hint(): string | null {
-    return key ? key.slice(-4) : null;
+    return stored ? stored.key.slice(-4) : null;
   },
-  set(next: string): void {
+  set(provider: ModelProvider, next: string): void {
     const trimmed = next.trim();
     if (!trimmed) return;
-    key = trimmed;
+    stored = { provider, key: trimmed };
     try {
-      localStorage.setItem(STORAGE_KEY, trimmed);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
     } catch {
       // storage unavailable (private mode etc.) — key lives for this visit only
     }
   },
   clear(): void {
-    key = null;
+    stored = null;
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {

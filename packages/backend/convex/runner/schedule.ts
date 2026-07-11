@@ -33,7 +33,7 @@ export const heartbeat = internalAction({
       { dev: false },
     )) as { scheduleId: string; sessionIds: string[] };
     // BYOK: schedule sessions are deployment-initiated — mark them so the
-    // runner executes them on the deployment's own gateway key instead of
+    // runner executes them on the deployment's own credentials instead of
     // holding them for a visitor key that will never arrive.
     for (const sessionId of result.sessionIds) {
       await ctx.runMutation(internal.keys.markSystem, { sessionId });

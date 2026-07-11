@@ -13,6 +13,13 @@ export const probe = internalAction({
     version: v.string(),
     exports: v.array(v.string()),
     worldInstalled: v.boolean(),
+    /** Presence (never values) of the model credentials the runner can use. */
+    credentials: v.object({
+      gatewayKey: v.boolean(),
+      oidcToken: v.boolean(),
+      openRouterKey: v.boolean(),
+      providerOverrideInstalled: v.boolean(),
+    }),
   }),
   handler: async (ctx) => {
     const { bundle, bundlePath, version } = await loadEveBundle(ctx);
@@ -31,6 +38,14 @@ export const probe = internalAction({
         typeof world === "object" &&
         world !== null &&
         typeof (world as { events?: unknown }).events === "object",
+      credentials: {
+        gatewayKey: (process.env.AI_GATEWAY_API_KEY ?? "").trim() !== "",
+        oidcToken: (process.env.VERCEL_OIDC_TOKEN ?? "").trim() !== "",
+        openRouterKey: (process.env.OPENROUTER_API_KEY ?? "").trim() !== "",
+        providerOverrideInstalled:
+          (globalThis as { AI_SDK_DEFAULT_PROVIDER?: unknown })
+            .AI_SDK_DEFAULT_PROVIDER !== undefined,
+      },
     };
   },
 });

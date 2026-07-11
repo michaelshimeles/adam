@@ -124,13 +124,16 @@ npx convex env set WORLD_EXECUTION_MODE convex
 npx convex env set CONVEX_URL http://127.0.0.1:3210
 npx convex env set EVE_BUNDLE_PATH "$(pwd)/eve-runtime/bundle"
 
-# model credentials — either a Vercel AI Gateway key:
+# model credentials — a Vercel AI Gateway key:
 npx convex env set AI_GATEWAY_API_KEY <your-key>
+# ...or an OpenRouter key (used only when no gateway credential is set):
+npx convex env set OPENROUTER_API_KEY <your-key>
 # ...or a Vercel OIDC token (expires ~12h; fine for a quick demo):
 #   cd apps/agent && npx vercel link && npx vercel env pull
 #   npx convex env set VERCEL_OIDC_TOKEN <token from apps/agent/.env>
 # NOTE: this deployment key only pays for the hourly heartbeat schedule.
-# Dashboard chats are BYOK: each visitor enters their own gateway key.
+# Dashboard chats are BYOK: each visitor enters their own key
+# (AI Gateway or OpenRouter — the key dialog accepts both).
 ```
 
 **4. Start the dashboard** (terminal 3):
@@ -261,7 +264,8 @@ re-vendors the eve bundle.
 - **What's genuinely gone:** the Nitro HTTP server, the queue pump, SSE
   transport to the browser, and every non-Convex runtime dependency
   (Postgres/Redis). What remains from Vercel: `eve build` as a compile step
-  and the AI Gateway for model credentials.
+  and the AI Gateway for model credentials (OpenRouter works as a drop-in
+  alternative — see BYOK below).
 - **Env vars the runner needs** (see quickstart): `CONVEX_URL`,
   `WORLD_SERVICE_SECRET`, `WORLD_EXECUTION_MODE=convex`, and model
   credentials. `EVE_BUNDLE_PATH` is optional: set it for local dev (import
@@ -274,12 +278,21 @@ re-vendors the eve bundle.
   with the world-convex pump delivering jobs over HTTP. Don't run both at
   once — they'd race for the same queue.
 - **Auth & BYOK**: the world functions are protected by a shared service
-  secret. `chat:send` is public but requires the caller's own Vercel AI
-  Gateway key (`apiKey` arg) — the dashboard prompts for it and the runner
-  injects it per session (`sessionKeys` table), so visitors spend their own
-  model credits, not the deployment's. Only the hourly heartbeat schedule
-  runs on the deployment's `AI_GATEWAY_API_KEY`. The `ui:*` / `notes:list`
-  queries remain public reads — add `ctx.auth` before shipping anything real.
+  secret. `chat:send` is public but requires the caller's own key (`apiKey`
+  + `provider` args) — a Vercel AI Gateway key or an OpenRouter key. The
+  dashboard prompts for it and the runner injects it per session
+  (`sessionKeys` table), so visitors spend their own model credits, not the
+  deployment's.   Gateway keys are injected as `AI_GATEWAY_API_KEY`;
+  OpenRouter keys swap the AI SDK default provider to OpenRouter for that
+  session's deliveries (the agent's `anthropic/claude-sonnet-5` model id is
+  also a valid OpenRouter slug). One capability difference: gateway-hosted
+  provider tools (web_search via parallel_search) are stripped from
+  OpenRouter requests — the agent falls back to its `web_fetch` tool.
+  Only the hourly heartbeat schedule runs on
+  the deployment's own credentials (`AI_GATEWAY_API_KEY` /
+  `VERCEL_OIDC_TOKEN`, else `OPENROUTER_API_KEY`). The `ui:*` /
+  `notes:list` queries remain public reads — add `ctx.auth` before shipping
+  anything real.
 - **Payload privacy**: run/step payloads are stored as TypedJSON text and are
   not exposed through the public UI queries; only stream chunks (the agent's
   user-facing output) are readable.

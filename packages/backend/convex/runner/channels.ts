@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import { loadEveBundle, type EveRouteEvent } from "./bundle";
-import { OWNER, withGatewayKey } from "./gatewayKeyLock";
+import { OWNER, withModelKey } from "./modelKeyLock";
 
 /**
  * Bridge from Convex HTTP actions (convex/http.ts) into the eve bundle's
@@ -13,8 +13,9 @@ import { OWNER, withGatewayKey } from "./gatewayKeyLock";
  * The webhook channel (agent/channels/webhook.ts) authenticates with the
  * WEBHOOK_CHANNEL_SECRET deployment env var; sessions it starts are
  * deployment-initiated, so they are marked `system` here and run on the
- * deployment's own AI_GATEWAY_API_KEY — external callers never supply a
- * model credential (unlike the BYOK web chat).
+ * deployment's own credentials (AI_GATEWAY_API_KEY / VERCEL_OIDC_TOKEN,
+ * else OPENROUTER_API_KEY) — external callers never supply a model
+ * credential (unlike the BYOK web chat).
  */
 
 export const dispatchWebhook = internalAction({
@@ -48,7 +49,7 @@ export const dispatchWebhook = internalAction({
 
     let response: Response;
     try {
-      response = await withGatewayKey(OWNER, () =>
+      response = await withModelKey(OWNER, () =>
         bundle.dispatchChannelRequest(event, "POST /webhook", { dev: false }),
       );
     } catch (err) {

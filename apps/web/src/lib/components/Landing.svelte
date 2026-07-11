@@ -380,7 +380,8 @@
         <code class="rounded-sm border bg-gray-100 px-1.5 py-px font-mono text-xs text-gray-1000"
           >eve build</code
         >
-        as a compile step, and the AI&nbsp;Gateway for model credentials.
+        as a compile step, and the AI&nbsp;Gateway for model credentials — or
+        bring an OpenRouter key instead.
       </p>
     </div>
   </section>
