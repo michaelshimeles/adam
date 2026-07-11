@@ -55,7 +55,7 @@ server. One Convex deployment runs and stores everything:
 | --- | --- |
 | `packages/backend` | The Convex deployment: world tables + functions, the in-Convex eve runner (`convex/runner/*`, `convex/chat.ts`), crons, `notes` app table, static hosting, public `ui` queries, and the vendored eve bundle (`eve-runtime/`) |
 | `packages/world-convex` | Implementation of `@workflow/world` (Storage + Queue + Streamer) backed by the Convex deployment. Compiled into the eve bundle via `experimental.workflow.world` |
-| `apps/agent` | The eve project: agent definition, Convex-backed tools (`save_note`, `list_notes`, `clear_notes` w/ HITL approval, `workflow_stats`), heartbeat schedule. Built with `eve build`, never started as a server |
+| `apps/agent` | The eve project: agent definition, Convex-backed tools (`save_note`, `list_notes`, `clear_notes` w/ HITL approval, `workflow_stats`, `simulate_long_task` for chunked long work), heartbeat schedule. Built with `eve build`, never started as a server |
 | `apps/web` | Svelte 5 + convex-svelte dashboard: chat with the agent (streaming + HITL), live notepad, run/step/event/stream observability |
 | `platform/*` | The **agent builder**: configure an agent (model, instructions, tools, schedule) in a dashboard and one-click deploy it to its own Convex project. See [platform/README.md](platform/README.md) |
 
@@ -185,11 +185,57 @@ to that query and to `ui:streamText` for live tails.
 (`{ worldError: { code, ... } }`) which the client maps back to typed
 `@workflow/errors` classes, so eve's retry/conflict semantics are preserved.
 
+## Long turns and the action ceiling
+
+Convex `"use node"` actions are killed at ~10 minutes, and one runner tick
+executes whole flow deliveries in-process — so how does an agent turn that
+needs 40 minutes of model calls and tool work survive? Two cooperating
+budgets, both far below the ceiling:
+
+- **The flow handler self-yields.** eve's run loop checks
+  `WORKFLOW_V2_TIMEOUT_MS` (pinned to eve's 120s default in
+  `runner/bundle.ts`) at every step boundary; past it, the handler enqueues
+  a continuation flow message for the run and returns. The next delivery —
+  usually in a fresh action — replays the event log, skips completed steps,
+  and continues. One long turn becomes many short deliveries by design, not
+  via crash recovery.
+- **The tick reserves a window per delivery.** `runner/engine.ts` stops
+  claiming new jobs once less than `RUNNER_DELIVERY_RESERVE_MS` (default
+  4 min) of its `RUNNER_SAFE_BUDGET_MS` (default 9.5 min) remains, and
+  schedules a successor tick that starts with a full window. A delivery is
+  never started so late that a normal yield can't finish inside the action.
+
+The one thing budgets can't save is a **single step body** (one tool call,
+one model call) that outruns the remaining window: step bodies can't be
+suspended. The kill path then takes over — lease expiry, `requeueExpired`
+cron, deterministic replay — and after 5 consecutive lease recoveries with
+no normal settle the job dead-letters (`recoveredCount` in `queueJobs`)
+instead of crash-looping forever. Write long tools so this can't happen:
+
+- **Chunk the work** (`simulate_long_task` is the template): do a bounded
+  chunk per call, return `{done: false, cursor}`, and let the agent loop
+  call again until done. Each call is its own durable step; the turn
+  straddles deliveries via the yields above.
+- **Externalize + hook** for work that runs elsewhere: kick it off in one
+  quick step, then suspend on a hook (the same machinery as `clear_notes`
+  HITL approval). A suspended run holds **no** action open at all; the
+  callback re-enqueues it.
+
+`scripts/long-turn-test.mjs` proves the whole story end-to-end (see Tests).
+
 ## Queue ops
 
 Everything is observable in the dashboard (queue health chip) and the Convex
-dashboard's `queueJobs` table. Two internal mutations help when a job has
-dead-lettered (exhausted its 3 delivery attempts):
+dashboard's `queueJobs` table. A job dead-letters for one of two reasons,
+both preserved in its `lastError`:
+
+- **Failed deliveries**: the handler errored `maxFails` (3) consecutive times.
+- **Crash loop**: the lease expired 5 consecutive times without a normal
+  settle — the worker keeps dying mid-delivery, almost always a single step
+  outrunning the action window (fix the tool: chunk it or move it behind a
+  hook).
+
+Two internal mutations help once a job is dead:
 
 ```bash
 cd packages/backend
@@ -247,6 +293,15 @@ cd packages/world-convex && pnpm test
 cover the in-Convex execution path: chat turn end-to-end, session
 continuation, and human-in-the-loop approval.
 
+`scripts/long-turn-test.mjs` covers the action-ceiling machinery: it pins
+`WORKFLOW_V2_TIMEOUT_MS` low on the dev deployment (restored afterwards),
+drives a chunked `simulate_long_task` turn that cannot fit in one delivery,
+and asserts the turn completes with every chunk executed exactly once and no
+dead-letters — proof that yield → continuation → replay works. A second
+phase sets `WORKFLOW_MAX_INLINE_STEPS=1` and requests parallel tool calls to
+exercise background per-step flow messages (reported, not asserted — models
+don't always parallelize).
+
 `pnpm typecheck` / `pnpm build` fan out through turbo; `pnpm build` also
 re-vendors the eve bundle.
 
@@ -255,9 +310,11 @@ re-vendors the eve bundle.
 - **eve was built to be a server; here it's a library.** The port works
   because eve's engine is stateless request/response under the hood — every
   flow job is an HTTP request, every suspension a reschedule. The Convex
-  runner speaks that protocol in-process. Model streaming happens inside a
-  single action invocation (bounded by Convex's action timeout), and
-  durability between invocations is exactly the world state in Convex tables.
+  runner speaks that protocol in-process. A single *step body* (one model
+  call, one tool call) runs inside one action invocation; whole turns
+  straddle as many invocations as they need via the flow handler's yield
+  budget (see "Long turns and the action ceiling"), and durability between
+  invocations is exactly the world state in Convex tables.
 - **What's genuinely gone:** the Nitro HTTP server, the queue pump, SSE
   transport to the browser, and every non-Convex runtime dependency
   (Postgres/Redis). What remains from Vercel: `eve build` as a compile step
