@@ -51,6 +51,22 @@ captures non-obvious caveats discovered while setting up the cloud environment.
 - `pnpm build` fans out through turbo and re-vendors the eve bundle.
 
 ### `platform/*` (agent builder, Product B)
-- Optional second product; not needed to run `adam`. It additionally requires a
-  Convex CLI login on the worker host and creates real dev-cloud Convex
-  projects when deploying. See `platform/README.md`.
+- Optional second product; not needed to run `adam`. See `platform/README.md`.
+- Three processes: `builder-backend` (`CONVEX_AGENT_MODE=anonymous npx convex dev`,
+  set `PLATFORM_WORKER_SECRET`), `builder-web` (`npx vite --port 5175`, point it
+  at the backend with `platform/builder-web/.env.local`
+  `VITE_BUILDER_CONVEX_URL=...`), and the build worker (`platform/worker`,
+  `node src/index.mjs` with `.env.local`).
+- **A deploy job sits in `pending` ("deploying") forever unless the `worker`
+  process is running** to claim it — the dashboard/control-plane and the worker
+  are separate processes.
+- The worker's deploy **pipeline cannot complete in a headless cloud env**:
+  - `materialize` shells out to **`rsync`** (install it if missing; it is not
+    in the base image).
+  - `provision` runs `convex dev --configure new --dev-deployment cloud`, which
+    **requires an authenticated Convex account** (creates a real cloud project
+    in a team). With no login it fails fast: "let's get you logged in … Cannot
+    prompt for input in non-interactive terminals". Needs `npx convex login`
+    (interactive) or a Convex team access token — not available anonymously.
+  - `materialize` + `build` (`eve build`) do work; only `provision` onward
+    needs the Convex account.
