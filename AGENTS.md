@@ -70,3 +70,15 @@ captures non-obvious caveats discovered while setting up the cloud environment.
     (interactive) or a Convex team access token — not available anonymously.
   - `materialize` + `build` (`eve build`) do work; only `provision` onward
     needs the Convex account.
+- **Deploying with a `CONVEX_DEPLOY_KEY`:** the builder pipeline's `childEnv`
+  (`platform/worker/src/util.mjs`) intentionally strips `CONVEX_DEPLOY_KEY`, and
+  its default flow *creates a new project per agent* (`--configure new --team`),
+  which a deployment-scoped key (`dev:<name>|…`) cannot do. To deploy to one
+  existing cloud deployment with such a key, run the pipeline steps directly
+  against it (with the key in the env, not via the worker): `convex dev --once`
+  (push) → `convex env set …` (`WORLD_SERVICE_SECRET`, `WORLD_EXECUTION_MODE=convex`,
+  `WORLD_CONVEX_DISABLE_PUMP=1`, `CONVEX_URL=https://<name>.convex.cloud`,
+  `WORKFLOW_QUEUE_NAMESPACE=eve6167656e74`, optional `AI_GATEWAY_API_KEY`) →
+  `node scripts/upload-bundle.mjs` → `vite build` + `static-hosting upload` →
+  `convex run runner/probe:probe`. Do **not** set `EVE_BUNDLE_PATH` on cloud
+  (it loads the bundle from file storage).
