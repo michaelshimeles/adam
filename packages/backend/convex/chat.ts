@@ -181,10 +181,13 @@ export const send = action({
           // New chat: the client needs this response's sessionId to
           // subscribe before it can render anything, so return now and
           // run the inline delivery in an immediately-scheduled action.
+          // Only the session id crosses the scheduler (its args persist in
+          // a system table); the action re-reads the key from sessionKeys,
+          // where it was committed above.
           await ctx.scheduler.runAfter(
             0,
             internal.runner.engine.inlineSession,
-            { sessionId: result.sessionId, provider, apiKey },
+            { sessionId: result.sessionId },
           );
         }
       } catch (error) {

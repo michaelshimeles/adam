@@ -3,10 +3,7 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import {
-  modelProviderValidator,
-  type ModelKeyCredential,
-} from "../lib/modelKeys";
+import type { ModelKeyCredential } from "../lib/modelKeys";
 import { loadEveBundle, type EveBundle } from "./bundle";
 import { OWNER, withModelKey } from "./modelKeyLock";
 
@@ -329,20 +326,35 @@ export async function deliverSessionInline(
  * so it hands delivery to this action instead of running it in-process.
  * Still much faster than the queue's tick path — it starts right away and
  * usually lands on the same warm isolate that just served the send.
+ *
+ * Takes only the session id: the visitor's key must never ride scheduler
+ * arguments (they persist in the _scheduled_functions system table). It's
+ * already committed to the sessionKeys trust boundary before scheduling,
+ * so resolve it from there — same source the scheduled ticks use.
  */
 export const inlineSession = internalAction({
-  args: {
-    sessionId: v.string(),
-    provider: modelProviderValidator,
-    apiKey: v.string(),
-  },
+  args: { sessionId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const rows = (await ctx.runQuery(internal.keys.resolveMany, {
+      jobs: [{ runId: args.sessionId }],
+    })) as {
+      runId: string;
+      apiKey?: string;
+      provider: ModelKeyCredential["provider"];
+      system: boolean;
+    }[];
+    const row = rows[0];
+    if (!row || row.system || row.apiKey === undefined) {
+      // No visitor key registered (or a system session) — leave the jobs
+      // to the scheduled ticks, which handle owner-credential sessions.
+      return null;
+    }
     const { bundle } = await loadEveBundle(ctx);
     await deliverSessionInline(
       ctx,
       bundle,
-      { provider: args.provider, apiKey: args.apiKey },
+      { provider: row.provider, apiKey: row.apiKey },
       args.sessionId,
     );
     return null;
