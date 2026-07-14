@@ -30,9 +30,13 @@ server. One Convex deployment runs and stores everything:
 │                                                                  │
 │   chat:send ─────────► eve channel API ─┐                        │
 │   (action, "use node")                  │ enqueue                │
+│       │ inline fast path                ▼                        │
+│       └─► deliverSessionInline   world/queue                     │
+│           (same action)          (mutations)                     │
+│                                         │ ctx.scheduler          │
 │                                         ▼                        │
-│   world/queue ──ctx.scheduler──► runner/engine:tick              │
-│   (mutations)                    (action, "use node")            │
+│                                  runner/engine:tick              │
+│                                  (action, "use node")            │
 │                                    │ imports vendored eve bundle │
 │                                    ▼                             │
 │                            workflow POST handler                 │
@@ -55,9 +59,9 @@ server. One Convex deployment runs and stores everything:
 | --- | --- |
 | `packages/backend` | The Convex deployment: world tables + functions, the in-Convex eve runner (`convex/runner/*`, `convex/chat.ts`), crons, `notes` app table, static hosting, public `ui` queries, and the vendored eve bundle (`eve-runtime/`) |
 | `packages/world-convex` | Implementation of `@workflow/world` (Storage + Queue + Streamer) backed by the Convex deployment. Compiled into the eve bundle via `experimental.workflow.world` |
-| `apps/agent` | The eve project: agent definition, Convex-backed tools (`save_note`, `list_notes`, `clear_notes` w/ HITL approval, `workflow_stats`, `simulate_long_task` for chunked long work), heartbeat schedule. Built with `eve build`, never started as a server |
+| `apps/agent` | The eve project: agent definition, Convex-backed tools (`save_note`, `list_notes`, `clear_notes` w/ HITL approval, `workflow_stats`, `get_time`, `simulate_long_task` for chunked long work), heartbeat schedule. Built with `eve build`, never started as a server |
 | `apps/web` | Svelte 5 + convex-svelte dashboard: chat with the agent (streaming + HITL), live notepad, run/step/event/stream observability |
-| `platform/*` | The **agent builder**: configure an agent (model, instructions, tools, schedule) in a dashboard and one-click deploy it to its own Convex project. See [platform/README.md](platform/README.md) |
+| `platform/*` | The **agent builder**: configure an agent (model, instructions, tools, schedule) in a dashboard and one-click deploy it to its own Convex project, with stuck deploy/delete job recovery (reaper cron, cancel, worker heartbeat). See [platform/README.md](platform/README.md) |
 
 ## How the port works
 
@@ -85,7 +89,17 @@ server. One Convex deployment runs and stores everything:
    `ui:sessionEvents` decodes their binary framing (length-prefixed
    devalue-encoded frames) server-side and returns structured events that the
    dashboard consumes as a plain reactive query.
-5. **Schedules** — `agent/schedules/heartbeat.md` is mirrored by a Convex cron
+5. **Inline fast path** — after dispatching, `chat:send` delivers its own
+   session's queue jobs in-process (`deliverSessionInline`) instead of
+   waiting for a scheduled tick: the action is already warm with the bundle
+   loaded and the visitor's key injected, so a simple warm turn drops from
+   ~13s to roughly the model's own latency (~3s). New chats hand delivery to
+   an immediately-scheduled `inlineSession` action so the fresh session id
+   returns to the client right away (it re-reads the key from `sessionKeys` —
+   never from scheduler args). Durability is unchanged: jobs are still
+   journaled with leases, scheduled ticks remain the fallback/recovery path,
+   and an inline failure never fails an already-enqueued send.
+6. **Schedules** — `agent/schedules/heartbeat.md` is mirrored by a Convex cron
    that calls the bundle's schedule dispatcher hourly.
 
 The dashboard's chat is Convex-native: it calls `chat:send` and subscribes to
@@ -148,6 +162,8 @@ Open the dashboard and try:
 - *"Save a note: eve is running on Convex end to end"* — the turn is enqueued,
   a scheduler tick fires the runner action, the agent streams tokens into a
   world stream, and the notepad panel updates when the tool's mutation commits.
+- *"What time is it in Toronto?"* — the `get_time` tool gives the agent a
+  clock (ISO + localized to any IANA timezone).
 - *"Clear the notepad"* — `clear_notes` requires approval; the HITL card is
   answered through `chat:send` with an input response, resuming the suspended
   workflow via a Convex-backed hook.
