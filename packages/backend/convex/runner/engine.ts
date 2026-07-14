@@ -76,6 +76,20 @@ const DELIVERY_RESERVE_MS_DEFAULT = 4 * 60 * 1000;
 const KEY_WAIT_RETRY_MS = 500;
 /** Give up on a job whose session never registered a key. */
 const KEY_WAIT_MAX_MS = 90_000;
+/**
+ * Inline fast path (chat:send): total wall clock the send action spends
+ * delivering its own session's jobs before handing the rest to scheduled
+ * ticks. Covers the flow handler's yield budget (WORKFLOW_V2_TIMEOUT_MS,
+ * 120s) plus slack — a normal turn finishes well inside it.
+ */
+const INLINE_BUDGET_MS = 3 * 60 * 1000;
+/** Inline fast path: minimum poll delay while waiting for the next job. */
+const INLINE_POLL_MS = 100;
+/**
+ * Inline fast path: hand off to scheduled ticks when the session's next
+ * job is further out than this (a sleep or HITL wait, not a turn hop).
+ */
+const INLINE_MAX_WAIT_MS = 1_500;
 
 /** Positive-number env override, read per invocation (env can change). */
 function envMs(name: string, fallback: number): number {
@@ -85,7 +99,7 @@ function envMs(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-type ClaimedJob = {
+export type ClaimedJob = {
   jobId: import("../_generated/dataModel").Id<"queueJobs">;
   queueName: string;
   queuePrefix: string;
@@ -254,6 +268,56 @@ export const tick = internalAction({
     return null;
   },
 });
+
+/**
+ * Inline fast path for chat:send. The send action already paid the Node
+ * cold start and bundle load, so instead of returning and waiting for a
+ * scheduled tick (a fresh action spawn — often another cold start), it
+ * delivers its own session's jobs right here: entry flow → turn workflow →
+ * any near-term continuations. Jobs are claimed through the same queue
+ * (runnerClaimSession), so durability is unchanged — if this action dies
+ * mid-turn the lease expires and the normal tick/replay path recovers it,
+ * and scheduled ticks racing us simply find the jobs already claimed.
+ *
+ * Must NOT be called from inside a withModelKey section (the process-wide
+ * credential mutex is not reentrant); it wraps each delivery batch itself.
+ */
+export async function deliverSessionInline(
+  ctx: ActionCtx,
+  bundle: EveBundle,
+  credential: ModelKeyCredential,
+  sessionId: string,
+): Promise<void> {
+  const startedAt = Date.now();
+  const workerId = `convex_inline_${crypto.randomUUID().slice(0, 8)}`;
+  while (Date.now() - startedAt < INLINE_BUDGET_MS) {
+    const { jobs, nextDueInMs } = (await ctx.runMutation(
+      internal.world.queue.runnerClaimSession,
+      {
+        workerId,
+        now: Date.now(),
+        max: CLAIM_BATCH,
+        leaseMs: LEASE_MS,
+        sessionId,
+      },
+    )) as { jobs: ClaimedJob[]; nextDueInMs: number | null };
+
+    if (jobs.length > 0) {
+      await withModelKey(credential, () =>
+        Promise.all(jobs.map((job) => deliver(ctx, bundle, workerId, job))),
+      );
+      continue;
+    }
+    // No due jobs. A turn hop (entry flow enqueues the turn workflow with
+    // ~no delay) shows up as a small nextDueInMs — poll for it. Anything
+    // further out (sleeps, HITL waits) belongs to the scheduled ticks,
+    // which every enqueue/reschedule already arranged.
+    if (nextDueInMs === null || nextDueInMs > INLINE_MAX_WAIT_MS) return;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(nextDueInMs, INLINE_POLL_MS)),
+    );
+  }
+}
 
 async function deliver(
   ctx: ActionCtx,

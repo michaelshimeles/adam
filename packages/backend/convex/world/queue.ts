@@ -274,6 +274,88 @@ export const runnerClaim = internalMutation({
   handler: async (ctx, args) => claimImpl(ctx, args),
 });
 
+/** Flow payloads carry the run id (+ `$eve.root` session attribute). */
+function payloadSessionIds(payloadJson: string): string[] {
+  try {
+    const payload = JSON.parse(payloadJson) as {
+      runId?: unknown;
+      runInput?: { attributes?: Record<string, unknown> };
+    };
+    const ids: string[] = [];
+    if (typeof payload.runId === "string") ids.push(payload.runId);
+    const root = payload.runInput?.attributes?.["$eve.root"];
+    if (typeof root === "string") ids.push(root);
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Claim only the pending jobs that belong to one session (its entry flow,
+ * turn workflows, and background steps). Backs the chat:send inline fast
+ * path: the send action delivers its own session's jobs in-process instead
+ * of waiting for a scheduled runner tick. `nextDueInMs` reports how far
+ * away the session's earliest not-yet-due job is (null when the session
+ * has no pending jobs), so the caller knows whether to poll or hand off
+ * to the scheduled ticks.
+ */
+export const runnerClaimSession = internalMutation({
+  args: {
+    workerId: v.string(),
+    now: v.number(),
+    max: v.number(),
+    leaseMs: v.number(),
+    sessionId: v.string(),
+  },
+  returns: v.object({
+    jobs: v.array(runnerClaimedJobValidator),
+    nextDueInMs: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const pending = await ctx.db
+      .query("queueJobs")
+      .withIndex("by_state_runAfter", (q) => q.eq("state", "pending"))
+      .order("asc")
+      .take(64);
+
+    const jobs = [];
+    let nextDueInMs: number | null = null;
+    for (const job of pending) {
+      if (!payloadSessionIds(job.payloadJson).includes(args.sessionId)) {
+        continue;
+      }
+      if (job.runAfter > args.now || jobs.length >= args.max) {
+        const due = Math.max(0, job.runAfter - args.now);
+        nextDueInMs = nextDueInMs === null ? due : Math.min(nextDueInMs, due);
+        continue;
+      }
+      await ctx.db.patch(job._id, {
+        state: "claimed",
+        leaseUntil: args.now + args.leaseMs,
+        claimedBy: args.workerId,
+        attempt: job.attempt + 1,
+        updatedAt: args.now,
+      });
+      jobs.push({
+        jobId: job._id,
+        queueName: job.queueName,
+        queuePrefix: job.queuePrefix,
+        messageId: job.messageId,
+        payloadJson: job.payloadJson,
+        headersJson: job.headersJson,
+        idempotencyKey: job.idempotencyKey,
+        jobKey: job.jobKey,
+        attempt: job.attempt + 1,
+        failCount: job.failCount,
+        maxFails: job.maxFails,
+        createdAt: job.createdAt,
+      });
+    }
+    return { jobs, nextDueInMs };
+  },
+});
+
 async function heartbeatImpl(
   ctx: MutationCtx,
   args: { jobId: import("../_generated/dataModel").Id<"queueJobs">; workerId: string; leaseMs: number },
