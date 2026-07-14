@@ -313,22 +313,30 @@ export const runnerClaimSession = internalMutation({
     nextDueInMs: v.union(v.number(), v.null()),
   }),
   handler: async (ctx, args) => {
-    const pending = await ctx.db
-      .query("queueJobs")
-      .withIndex("by_state_runAfter", (q) => q.eq("state", "pending"))
-      .order("asc")
-      .take(64);
+    // Streamed scan of the pending index (ordered by runAfter): other
+    // sessions' jobs are skipped without bounding how deep this session's
+    // jobs can sit in the backlog. The cap only guards mutation limits.
+    const SCAN_LIMIT = 1024;
+    let scanned = 0;
 
     const jobs = [];
     let nextDueInMs: number | null = null;
-    for (const job of pending) {
+    for await (const job of ctx.db
+      .query("queueJobs")
+      .withIndex("by_state_runAfter", (q) => q.eq("state", "pending"))
+      .order("asc")) {
+      if (scanned++ >= SCAN_LIMIT) break;
       if (!payloadSessionIds(job.payloadJson).includes(args.sessionId)) {
         continue;
       }
-      if (job.runAfter > args.now || jobs.length >= args.max) {
-        const due = Math.max(0, job.runAfter - args.now);
-        nextDueInMs = nextDueInMs === null ? due : Math.min(nextDueInMs, due);
-        continue;
+      if (job.runAfter > args.now) {
+        // Index order: every later session job is due even further out.
+        nextDueInMs = job.runAfter - args.now;
+        break;
+      }
+      if (jobs.length >= args.max) {
+        nextDueInMs = 0;
+        break;
       }
       await ctx.db.patch(job._id, {
         state: "claimed",

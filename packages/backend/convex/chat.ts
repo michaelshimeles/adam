@@ -168,12 +168,25 @@ export const send = action({
       // already-successful send into a client-visible error (which could
       // prompt a resend and a duplicate billed turn). The ticks take over.
       try {
-        await deliverSessionInline(
-          ctx,
-          bundle,
-          { provider, apiKey },
-          result.sessionId,
-        );
+        if (args.sessionId) {
+          // Continuing chat: the client is already subscribed to
+          // ui:sessionEvents, so deliver in-process on this warm isolate.
+          await deliverSessionInline(
+            ctx,
+            bundle,
+            { provider, apiKey },
+            result.sessionId,
+          );
+        } else {
+          // New chat: the client needs this response's sessionId to
+          // subscribe before it can render anything, so return now and
+          // run the inline delivery in an immediately-scheduled action.
+          await ctx.scheduler.runAfter(
+            0,
+            internal.runner.engine.inlineSession,
+            { sessionId: result.sessionId, provider, apiKey },
+          );
+        }
       } catch (error) {
         console.error("inline delivery failed; scheduled ticks recover", error);
       }

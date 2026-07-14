@@ -3,7 +3,10 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import type { ModelKeyCredential } from "../lib/modelKeys";
+import {
+  modelProviderValidator,
+  type ModelKeyCredential,
+} from "../lib/modelKeys";
 import { loadEveBundle, type EveBundle } from "./bundle";
 import { OWNER, withModelKey } from "./modelKeyLock";
 
@@ -318,6 +321,33 @@ export async function deliverSessionInline(
     );
   }
 }
+
+/**
+ * Scheduled (0-delay) wrapper around deliverSessionInline for brand-new
+ * chats: chat:send must return the fresh sessionId immediately so the
+ * client can subscribe to ui:sessionEvents while the first turn streams,
+ * so it hands delivery to this action instead of running it in-process.
+ * Still much faster than the queue's tick path — it starts right away and
+ * usually lands on the same warm isolate that just served the send.
+ */
+export const inlineSession = internalAction({
+  args: {
+    sessionId: v.string(),
+    provider: modelProviderValidator,
+    apiKey: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { bundle } = await loadEveBundle(ctx);
+    await deliverSessionInline(
+      ctx,
+      bundle,
+      { provider: args.provider, apiKey: args.apiKey },
+      args.sessionId,
+    );
+    return null;
+  },
+});
 
 async function deliver(
   ctx: ActionCtx,
