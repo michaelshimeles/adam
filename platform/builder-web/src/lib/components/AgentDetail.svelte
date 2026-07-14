@@ -28,6 +28,7 @@
 
   let deploying = $state(false);
   let removing = $state(false);
+  let cancelling = $state(false);
   let deleteOpen = $state(false);
   let deployError = $state<string | null>(null);
 
@@ -46,6 +47,19 @@
       deployError = err instanceof Error ? err.message : String(err);
     } finally {
       deploying = false;
+    }
+  }
+
+  async function cancelJob() {
+    if (cancelling) return;
+    cancelling = true;
+    deployError = null;
+    try {
+      await client.mutation(agentsApi.cancelJob, { agentId, ...authArgs() });
+    } catch (err) {
+      deployError = err instanceof Error ? err.message : String(err);
+    } finally {
+      cancelling = false;
     }
   }
 
@@ -151,6 +165,11 @@
             </AlertDialog.Footer>
           </AlertDialog.Content>
         </AlertDialog.Root>
+        {#if busy}
+          <Button variant="outline" size="sm" onclick={cancelJob} disabled={cancelling}>
+            {cancelling ? "Cancelling…" : "Cancel"}
+          </Button>
+        {/if}
         <Button variant="outline" size="sm" onclick={onEdit} disabled={busy}>Edit</Button>
         <Button size="sm" onclick={deploy} disabled={busy}>
           {agent.status === "deploying"

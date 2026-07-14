@@ -123,6 +123,11 @@ export const agentsApi = {
     DashboardAuth & { agentId: string },
     null
   >("agents:remove"),
+  cancelJob: makeFunctionReference<
+    "mutation",
+    DashboardAuth & { agentId: string },
+    null
+  >("agents:cancelJob"),
   latestJob: makeFunctionReference<
     "query",
     DashboardAuth & { agentId: string },

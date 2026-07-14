@@ -1,7 +1,28 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { internalMutation, mutation, MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { agentConfig } from "./schema";
 import { purgeAgentRows, requireWorkerSecret } from "./lib";
+
+/** A worker is considered gone after this long without a heartbeat. */
+const WORKER_STALE_MS = 2 * 60_000;
+/** Pending jobs fail after this long with no live worker to claim them. */
+const PENDING_TIMEOUT_MS = 2 * 60_000;
+/** Hard cap on a running job (every pipeline step has its own timeout). */
+const RUNNING_MAX_MS = 45 * 60_000;
+
+async function bumpHeartbeat(ctx: MutationCtx, workerId: string): Promise<void> {
+  const now = Date.now();
+  const hb = await ctx.db
+    .query("workerHeartbeats")
+    .withIndex("by_worker", (q) => q.eq("workerId", workerId))
+    .unique();
+  if (hb) {
+    await ctx.db.patch(hb._id, { lastSeen: now });
+  } else {
+    await ctx.db.insert("workerHeartbeats", { workerId, lastSeen: now });
+  }
+}
 
 /**
  * Worker-facing API. The build worker polls `claim`, streams progress via
@@ -47,18 +68,7 @@ export const claim = mutation({
     const now = Date.now();
 
     // Heartbeat upsert so the UI can show worker liveness.
-    const hb = await ctx.db
-      .query("workerHeartbeats")
-      .withIndex("by_worker", (q) => q.eq("workerId", args.workerId))
-      .unique();
-    if (hb) {
-      await ctx.db.patch(hb._id, { lastSeen: now });
-    } else {
-      await ctx.db.insert("workerHeartbeats", {
-        workerId: args.workerId,
-        lastSeen: now,
-      });
-    }
+    await bumpHeartbeat(ctx, args.workerId);
 
     const job = await ctx.db
       .query("deployJobs")
@@ -135,6 +145,17 @@ export const claim = mutation({
   },
 });
 
+/** Liveness ping, sent on an interval while the worker runs a job. */
+export const heartbeat = mutation({
+  args: { secret: v.string(), workerId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireWorkerSecret(args.secret);
+    await bumpHeartbeat(ctx, args.workerId);
+    return null;
+  },
+});
+
 export const setStep = mutation({
   args: { secret: v.string(), jobId: v.id("deployJobs"), step: v.string() },
   returns: v.null(),
@@ -142,6 +163,7 @@ export const setStep = mutation({
     requireWorkerSecret(args.secret);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.status !== "running") return null;
+    if (job.workerId) await bumpHeartbeat(ctx, job.workerId);
     await ctx.db.patch(args.jobId, { step: args.step });
     return null;
   },
@@ -158,6 +180,7 @@ export const appendLogs = mutation({
     requireWorkerSecret(args.secret);
     const job = await ctx.db.get(args.jobId);
     if (!job) return null;
+    if (job.workerId) await bumpHeartbeat(ctx, job.workerId);
     const now = Date.now();
     let seq = job.logCount;
     for (const line of args.lines) {
@@ -198,6 +221,9 @@ export const complete = mutation({
     requireWorkerSecret(args.secret);
     const job = await ctx.db.get(args.jobId);
     if (!job) return null;
+    // The job may have been cancelled from the dashboard or reaped as stale
+    // while the worker was still running it — its outcome no longer applies.
+    if (job.status !== "running") return null;
     const now = Date.now();
 
     if (job.kind === "delete") {
@@ -252,6 +278,67 @@ export const complete = mutation({
         lastError: args.error ?? "Deploy failed",
         updatedAt: now,
       });
+    }
+    return null;
+  },
+});
+
+/**
+ * Cron-driven recovery for jobs that will never finish: pending jobs no
+ * worker will claim (worker offline) and running jobs whose worker died or
+ * hung. Without this, an agent stays locked in "deploying"/"deleting"
+ * forever — deploy, edit, and delete are all blocked on that status.
+ */
+export const reapStale = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    const failJob = async (job: Doc<"deployJobs">, error: string) => {
+      await ctx.db.patch(job._id, { status: "failed", error, finishedAt: now });
+      const agent = await ctx.db.get(job.agentId);
+      if (agent && (agent.status === "deploying" || agent.status === "deleting")) {
+        await ctx.db.patch(agent._id, {
+          status: "failed",
+          lastError: error,
+          updatedAt: now,
+        });
+      }
+    };
+
+    // Bounded: one row per worker id that has ever polled this deployment.
+    const heartbeats = await ctx.db.query("workerHeartbeats").collect();
+    const lastSeen = new Map(heartbeats.map((h) => [h.workerId, h.lastSeen]));
+    const anyWorkerLive = heartbeats.some((h) => now - h.lastSeen < WORKER_STALE_MS);
+
+    const pending = await ctx.db
+      .query("deployJobs")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .collect();
+    for (const job of pending) {
+      if (!anyWorkerLive && now - job.createdAt > PENDING_TIMEOUT_MS) {
+        await failJob(
+          job,
+          "No build worker is running — start platform/worker and retry",
+        );
+      }
+    }
+
+    const running = await ctx.db
+      .query("deployJobs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .collect();
+    for (const job of running) {
+      const seen = job.workerId ? lastSeen.get(job.workerId) : undefined;
+      if (seen === undefined || now - seen > WORKER_STALE_MS) {
+        await failJob(
+          job,
+          "Build worker went offline mid-job — restart the worker and retry",
+        );
+      } else if (now - (job.startedAt ?? job.createdAt) > RUNNING_MAX_MS) {
+        await failJob(job, "Job exceeded the 45 minute limit and was abandoned — retry");
+      }
     }
     return null;
   },
