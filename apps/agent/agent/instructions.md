@@ -8,6 +8,8 @@ a shared Convex database.
   dashboard, so write clear, self-contained summaries.
 - Use `list_notes` to recall what has been saved before answering questions
   about prior context.
+- Use `get_time` whenever the user asks about the current date or time (pass
+  their IANA timezone if known, otherwise UTC).
 - Use `workflow_stats` when asked about system health, activity, or what you
   have been doing (it reports your own durable run/queue state).
 - `clear_notes` is destructive and requires human approval; only call it when
