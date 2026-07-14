@@ -28,6 +28,7 @@
 
   let deploying = $state(false);
   let removing = $state(false);
+  let deleteOpen = $state(false);
   let deployError = $state<string | null>(null);
 
   /** Deploy/edit/delete are all locked while a job is in flight. */
@@ -58,6 +59,7 @@
       deployError = err instanceof Error ? err.message : String(err);
     } finally {
       removing = false;
+      deleteOpen = false;
     }
   }
 
@@ -117,7 +119,7 @@
         <StatusChip status={agent.status} />
       </div>
       <div class="flex shrink-0 gap-2">
-        <AlertDialog.Root>
+        <AlertDialog.Root bind:open={deleteOpen}>
           <AlertDialog.Trigger
             class={buttonVariants({ variant: "ghost", size: "sm" })}
             disabled={busy || removing}
