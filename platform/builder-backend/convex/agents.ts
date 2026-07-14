@@ -295,6 +295,48 @@ export const remove = mutation({
   },
 });
 
+/**
+ * Force-fail the agent's in-flight job and unlock the agent. The escape
+ * hatch for a stuck deploy/teardown (worker offline or wedged) — the cron
+ * reaper handles most cases automatically, this is the immediate manual one.
+ * If the worker is in fact still running the job, its eventual `complete`
+ * is ignored (worker.complete only applies to jobs still in "running").
+ */
+export const cancelJob = mutation({
+  args: { ...dashboardAuthArgs, agentId: v.id("agents") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireDashboardSecret(args.dashboardSecret);
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) return null;
+
+    const now = Date.now();
+    const recent = await ctx.db
+      .query("deployJobs")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .order("desc")
+      .take(5);
+    const inFlight = recent.find(
+      (j) => j.status === "pending" || j.status === "running",
+    );
+    if (inFlight) {
+      await ctx.db.patch(inFlight._id, {
+        status: "failed",
+        error: "Cancelled from the dashboard",
+        finishedAt: now,
+      });
+    }
+    if (agent.status === "deploying" || agent.status === "deleting") {
+      await ctx.db.patch(agent._id, {
+        status: "failed",
+        lastError: "Cancelled from the dashboard",
+        updatedAt: now,
+      });
+    }
+    return null;
+  },
+});
+
 const jobShape = v.object({
   _id: v.id("deployJobs"),
   _creationTime: v.number(),

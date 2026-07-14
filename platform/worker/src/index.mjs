@@ -37,6 +37,15 @@ await mkdir(workRoot, { recursive: true });
 
 console.log(`worker ${workerId} polling ${builderUrl} (team: ${team})`);
 
+// Liveness ping, independent of the claim loop: long pipeline steps keep the
+// worker away from `claim` for many minutes, and the backend reaps running
+// jobs whose worker has no recent heartbeat.
+setInterval(() => {
+  client
+    .mutation("worker:heartbeat", { secret, workerId })
+    .catch(() => {});
+}, 30_000).unref();
+
 /** Batches log lines into appendLogs mutations (~1/s) so the UI streams. */
 function makeJobLogger(jobId) {
   let buffer = [];
