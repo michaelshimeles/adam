@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import { modelProviderValidator, normalizeProvider } from "./lib/modelKeys";
 import { loadEveBundle, type EveRouteEvent } from "./runner/bundle";
+import { deliverSessionInline } from "./runner/engine";
 import { withModelKey } from "./runner/modelKeyLock";
 
 /**
@@ -111,7 +112,7 @@ export const send = action({
     // caller's key. withModelKey serializes credential injection
     // process-wide, so this can neither clobber nor be clobbered by a
     // concurrent runner delivery's injected key.
-    return await withModelKey({ provider, apiKey }, async () => {
+    const result = await withModelKey({ provider, apiKey }, async () => {
       const response = await bundle.dispatchChannelRequest(event, routeKey, {
         dev: false,
       });
@@ -153,5 +154,47 @@ export const send = action({
             text.slice(0, 500)),
       };
     });
+
+    // Fast path: this action already paid the cold start and bundle load,
+    // so deliver the turn's jobs here instead of waiting for a scheduled
+    // runner tick (a fresh action spawn). Tokens stream to the `streams`
+    // table as the turn runs, so the UI renders live either way; if this
+    // action dies mid-turn, leases expire and the ticks recover the jobs.
+    // Outside the withModelKey section above — the mutex is not reentrant;
+    // the inline runner wraps each delivery batch itself.
+    if (result.ok && result.sessionId) {
+      // Optimization only: the turn is already durably enqueued and every
+      // enqueue scheduled a runner tick, so a failure here must not turn an
+      // already-successful send into a client-visible error (which could
+      // prompt a resend and a duplicate billed turn). The ticks take over.
+      try {
+        if (args.sessionId) {
+          // Continuing chat: the client is already subscribed to
+          // ui:sessionEvents, so deliver in-process on this warm isolate.
+          await deliverSessionInline(
+            ctx,
+            bundle,
+            { provider, apiKey },
+            result.sessionId,
+          );
+        } else {
+          // New chat: the client needs this response's sessionId to
+          // subscribe before it can render anything, so return now and
+          // run the inline delivery in an immediately-scheduled action.
+          // Only the session id crosses the scheduler (its args persist in
+          // a system table); the action re-reads the key from sessionKeys,
+          // where it was committed above.
+          await ctx.scheduler.runAfter(
+            0,
+            internal.runner.engine.inlineSession,
+            { sessionId: result.sessionId },
+          );
+        }
+      } catch (error) {
+        console.error("inline delivery failed; scheduled ticks recover", error);
+      }
+    }
+
+    return result;
   },
 });
