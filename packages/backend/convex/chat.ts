@@ -163,12 +163,20 @@ export const send = action({
     // Outside the withModelKey section above — the mutex is not reentrant;
     // the inline runner wraps each delivery batch itself.
     if (result.ok && result.sessionId) {
-      await deliverSessionInline(
-        ctx,
-        bundle,
-        { provider, apiKey },
-        result.sessionId,
-      );
+      // Optimization only: the turn is already durably enqueued and every
+      // enqueue scheduled a runner tick, so a failure here must not turn an
+      // already-successful send into a client-visible error (which could
+      // prompt a resend and a duplicate billed turn). The ticks take over.
+      try {
+        await deliverSessionInline(
+          ctx,
+          bundle,
+          { provider, apiKey },
+          result.sessionId,
+        );
+      } catch (error) {
+        console.error("inline delivery failed; scheduled ticks recover", error);
+      }
     }
 
     return result;
