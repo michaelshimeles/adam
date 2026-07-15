@@ -157,6 +157,7 @@
           {:else if effectiveId}
             <AgentDetail
               agentId={effectiveId}
+              {workerOnline}
               onEdit={() => {
                 mode = "edit";
               }}

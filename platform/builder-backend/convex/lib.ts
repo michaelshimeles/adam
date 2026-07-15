@@ -51,6 +51,17 @@ export function requireDashboardSecret(secret: string | undefined): void {
   }
 }
 
+/** A worker is considered gone after this long without a heartbeat. */
+export const WORKER_STALE_MS = 2 * 60_000;
+
+/** True when any build worker has heartbeated recently. */
+export async function hasLiveWorker(ctx: MutationCtx): Promise<boolean> {
+  // Bounded: one row per worker id that has ever polled this deployment.
+  const heartbeats = await ctx.db.query("workerHeartbeats").collect();
+  const now = Date.now();
+  return heartbeats.some((h) => now - h.lastSeen < WORKER_STALE_MS);
+}
+
 /**
  * Delete an agent row and everything referencing it: secrets, deploy jobs,
  * job logs. Bounded data (one secrets row, a handful of jobs, worker-capped
