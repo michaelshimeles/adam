@@ -2,10 +2,8 @@ import { v } from "convex/values";
 import { internalMutation, mutation, MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { agentConfig } from "./schema";
-import { purgeAgentRows, requireWorkerSecret } from "./lib";
+import { purgeAgentRows, requireWorkerSecret, WORKER_STALE_MS } from "./lib";
 
-/** A worker is considered gone after this long without a heartbeat. */
-const WORKER_STALE_MS = 2 * 60_000;
 /** Pending jobs fail after this long with no live worker to claim them. */
 const PENDING_TIMEOUT_MS = 2 * 60_000;
 /** Hard cap on a running job (every pipeline step has its own timeout). */

@@ -1,8 +1,8 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { agentConfig } from "./schema";
-import { purgeAgentRows, requireDashboardSecret, slugify } from "./lib";
+import { hasLiveWorker, purgeAgentRows, requireDashboardSecret, slugify } from "./lib";
 
 /**
  * Public UI surface for the builder dashboard.
@@ -225,6 +225,15 @@ export const requestDeploy = mutation({
     );
     if (inFlight) return inFlight._id;
 
+    // Fail fast instead of parking the agent in "deploying" until the
+    // pending-job reaper gives up. ConvexError so the message survives prod
+    // redaction and reaches the dashboard.
+    if (!(await hasLiveWorker(ctx))) {
+      throw new ConvexError(
+        "No build worker is online — start platform/worker, then retry",
+      );
+    }
+
     const jobId = await ctx.db.insert("deployJobs", {
       agentId: args.agentId,
       kind: "deploy",
@@ -276,6 +285,14 @@ export const remove = mutation({
       // Never provisioned — nothing to tear down remotely.
       await purgeAgentRows(ctx, args.agentId);
       return null;
+    }
+
+    // Teardown needs a worker; fail fast rather than locking the agent in
+    // "deleting" until the reaper gives up.
+    if (!(await hasLiveWorker(ctx))) {
+      throw new ConvexError(
+        "No build worker is online — start platform/worker, then retry",
+      );
     }
 
     await ctx.db.insert("deployJobs", {

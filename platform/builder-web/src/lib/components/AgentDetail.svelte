@@ -12,9 +12,11 @@
 
   let {
     agentId,
+    workerOnline,
     onEdit,
   }: {
     agentId: string;
+    workerOnline: boolean;
     onEdit: () => void;
   } = $props();
 
@@ -37,6 +39,13 @@
     agent?.status === "deploying" || agent?.status === "deleting",
   );
 
+  /** ConvexError payloads live in `data` (survives prod redaction). */
+  function errorMessage(err: unknown): string {
+    const data = (err as { data?: unknown }).data;
+    if (typeof data === "string") return data;
+    return err instanceof Error ? err.message : String(err);
+  }
+
   async function deploy() {
     if (deploying) return;
     deploying = true;
@@ -44,7 +53,7 @@
     try {
       await client.mutation(agentsApi.requestDeploy, { agentId, ...authArgs() });
     } catch (err) {
-      deployError = err instanceof Error ? err.message : String(err);
+      deployError = errorMessage(err);
     } finally {
       deploying = false;
     }
@@ -57,7 +66,7 @@
     try {
       await client.mutation(agentsApi.cancelJob, { agentId, ...authArgs() });
     } catch (err) {
-      deployError = err instanceof Error ? err.message : String(err);
+      deployError = errorMessage(err);
     } finally {
       cancelling = false;
     }
@@ -70,7 +79,7 @@
     try {
       await client.mutation(agentsApi.remove, { agentId, ...authArgs() });
     } catch (err) {
-      deployError = err instanceof Error ? err.message : String(err);
+      deployError = errorMessage(err);
     } finally {
       removing = false;
       deleteOpen = false;
@@ -186,6 +195,13 @@
     {#if deployError}
       <Alert variant="destructive">
         <AlertDescription class="font-mono text-xs break-all">{deployError}</AlertDescription>
+      </Alert>
+    {:else if !workerOnline && !busy}
+      <Alert>
+        <AlertDescription class="font-mono text-xs">
+          The build worker is offline — deploy and delete will fail until it is
+          running (platform/worker: node src/index.mjs).
+        </AlertDescription>
       </Alert>
     {/if}
 
