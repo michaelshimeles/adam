@@ -66,7 +66,7 @@
     {
       n: "04",
       name: "chat",
-      body: "chat:send invokes the bundled channel API the way eve's HTTP server would have. Transcripts are durable streams, decoded server-side into a plain reactive query.",
+      body: "chat:send invokes the bundled channel API the way eve's HTTP server would have, then delivers the turn in-process on the same warm action — scheduled ticks stay as the recovery path. Transcripts are durable streams, decoded server-side into a plain reactive query.",
     },
     {
       n: "05",
@@ -425,7 +425,9 @@
 
           <div class="flex items-center justify-center gap-2 py-3" aria-hidden="true">
             <span class="font-mono text-sm text-gray-600">↓</span>
-            <span class="font-mono text-[11px] text-gray-600">enqueue</span>
+            <span class="font-mono text-[11px] text-gray-600">
+              enqueue · then delivered inline on the same action — ticks recover
+            </span>
           </div>
 
           <div class="grid grid-cols-1 items-center gap-2 md:grid-cols-[1fr_auto_1fr] md:gap-3">
@@ -508,8 +510,8 @@
         Talk to it
       </h3>
       <p class="mx-auto mt-3 mb-8 max-w-[520px] text-base leading-6 text-muted-foreground">
-        Ask it to save a note, check queue health, or clear the notepad and watch a
-        human-in-the-loop approval suspend and resume a workflow.
+        Ask it what time it is, save a note, check queue health, or clear the notepad and
+        watch a human-in-the-loop approval suspend and resume a workflow.
       </p>
       <div class="mx-auto flex max-w-80 flex-col justify-center gap-3 md:max-w-none md:flex-row">
         <Button href="#/dashboard" size="lg">Open Dashboard</Button>
