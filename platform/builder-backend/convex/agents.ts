@@ -274,6 +274,14 @@ export const remove = mutation({
     }
     if (agent.status === "deleting") return null;
 
+    // Teardown needs a worker; fail fast (before touching any state) rather
+    // than locking the agent in "deleting" until the reaper gives up.
+    if (agent.deploymentName && !(await hasLiveWorker(ctx))) {
+      throw new ConvexError(
+        "No build worker is online — start platform/worker, then retry",
+      );
+    }
+
     // Revoke stored credentials immediately on either path.
     const secret = await ctx.db
       .query("agentSecrets")
@@ -285,14 +293,6 @@ export const remove = mutation({
       // Never provisioned — nothing to tear down remotely.
       await purgeAgentRows(ctx, args.agentId);
       return null;
-    }
-
-    // Teardown needs a worker; fail fast rather than locking the agent in
-    // "deleting" until the reaper gives up.
-    if (!(await hasLiveWorker(ctx))) {
-      throw new ConvexError(
-        "No build worker is online — start platform/worker, then retry",
-      );
     }
 
     await ctx.db.insert("deployJobs", {
