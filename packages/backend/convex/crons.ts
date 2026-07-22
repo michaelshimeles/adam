@@ -29,6 +29,24 @@ crons.hourly(
   {},
 );
 
+// eve reminders schedule (agent/schedules/reminders.ts) — every minute,
+// claims due reminders and delivers proactive sessions.
+crons.interval(
+  "eve reminders schedule",
+  { minutes: 1 },
+  internal.runner.schedule.reminders,
+  {},
+);
+
+// eve memory-consolidation schedule (agent/schedules/memory-consolidation.md)
+// — nightly, matching its "15 8 * * *" cron.
+crons.daily(
+  "eve memory consolidation schedule",
+  { hourUTC: 8, minuteUTC: 15 },
+  internal.runner.schedule.memoryConsolidation,
+  {},
+);
+
 // Keep the dead-letter set bounded.
 crons.daily(
   "cleanup dead queue jobs",

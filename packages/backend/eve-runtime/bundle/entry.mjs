@@ -2,8 +2,8 @@
 // per-build export aliases of _libs/eve.mjs. The Convex runner imports this
 // file only.
 export {
-  B as POST,
-  U as dispatchChannelRequest,
-  G as getWorld,
+  V as POST,
+  W as dispatchChannelRequest,
+  K as getWorld,
   R as dispatchScheduleTask,
 } from "./_libs/eve.mjs";

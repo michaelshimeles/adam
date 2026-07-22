@@ -90,7 +90,18 @@ export const api = {
   notesList: makeFunctionReference<"query", { limit?: number }, UiNote[]>(
     "notes:list",
   ),
+  inboxList: makeFunctionReference<"query", { limit?: number }, InboxItem[]>(
+    "inbox:list",
+  ),
 };
+
+/** Proactive session written by a fired reminder or webhook (inbox:list). */
+export interface InboxItem {
+  sessionId: string;
+  title: string;
+  kind: string;
+  createdAt: number;
+}
 
 /** chat:send action result (packages/backend/convex/chat.ts). */
 export interface ChatSendResult {

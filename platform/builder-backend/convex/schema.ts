@@ -29,7 +29,19 @@ export const agentConfig = {
     // created before these toggles existed lack them — read as "true".
     webFetch: v.optional(v.boolean()),
     webSearch: v.optional(v.boolean()),
+    // Assistant capability groups (each maps to a set of template files the
+    // pipeline deletes when toggled off). Optional because rows created
+    // before these toggles existed lack them — read as "true".
+    memory: v.optional(v.boolean()),
+    skills: v.optional(v.boolean()),
+    reminders: v.optional(v.boolean()),
+    eventTriggers: v.optional(v.boolean()),
+    receipts: v.optional(v.boolean()),
+    extras: v.optional(v.boolean()),
+    delegation: v.optional(v.boolean()),
   }),
+  /** IANA timezone for reminders/time rendering (AGENT_DEFAULT_TIMEZONE). */
+  timezone: v.optional(v.string()),
   /** Optional markdown schedule (mirrored to a Convex cron). */
   schedule: v.object({
     enabled: v.boolean(),
@@ -43,6 +55,14 @@ export const agentConfig = {
   channels: v.optional(
     v.object({
       webhook: v.object({ enabled: v.boolean() }),
+      /** Optional for pre-telegram rows — read as "disabled". */
+      telegram: v.optional(
+        v.object({
+          enabled: v.boolean(),
+          /** Comma-separated Telegram user ids; "" = any private DM. */
+          allowedUserIds: v.string(),
+        }),
+      ),
     }),
   ),
 };
@@ -72,6 +92,8 @@ export default defineSchema({
     status: agentStatus,
     /** Set by create/update so the UI can show it without reading secrets. */
     hasGatewayKey: v.boolean(),
+    hasTelegramToken: v.optional(v.boolean()),
+    hasComposioKey: v.optional(v.boolean()),
     // Deployment identity, populated after the first successful deploy.
     projectSlug: v.optional(v.string()),
     deploymentName: v.optional(v.string()),
@@ -99,6 +121,10 @@ export default defineSchema({
     agentId: v.id("agents"),
     /** Deployment-level model credential (pays for schedule sessions). */
     aiGatewayApiKey: v.optional(v.string()),
+    /** Telegram bot token (from @BotFather) for the telegram channel. */
+    telegramBotToken: v.optional(v.string()),
+    /** Composio API key for the composio MCP connection. */
+    composioApiKey: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_agent", ["agentId"]),
 

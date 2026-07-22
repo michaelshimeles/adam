@@ -104,7 +104,26 @@
       : [],
   );
 
+  const capabilityList = $derived(
+    agent
+      ? (
+          [
+            ["memory", agent.tools.memory ?? true],
+            ["skills", agent.tools.skills ?? true],
+            ["reminders", agent.tools.reminders ?? true],
+            ["event triggers", agent.tools.eventTriggers ?? true],
+            ["receipts", agent.tools.receipts ?? true],
+            ["extras", agent.tools.extras ?? true],
+            ["delegation", agent.tools.delegation ?? true],
+          ] as const
+        )
+          .filter(([, on]) => on)
+          .map(([name]) => name)
+      : [],
+  );
+
   const webhookOn = $derived(agent?.channels?.webhook.enabled === true);
+  const telegramOn = $derived(agent?.channels?.telegram?.enabled === true);
   const webhookUrl = $derived(
     agent?.deploymentUrl
       ? `${agent.deploymentUrl.replace(".convex.cloud", ".convex.site")}/channels/webhook`
@@ -224,6 +243,15 @@
           {/each}
         </dd>
 
+        {@render fact("capabilities")}
+        <dd class="m-0 flex flex-wrap items-center gap-1.5 border-b pb-3 md:py-3">
+          {#each capabilityList as cap (cap)}
+            <Badge variant="outline" class="font-mono">{cap}</Badge>
+          {:else}
+            <em class="not-italic text-sm text-muted-foreground">none</em>
+          {/each}
+        </dd>
+
         {@render fact("schedule")}
         <dd class="m-0 border-b pb-3 text-sm md:flex md:items-center md:py-3">
           {#if agent.schedule.enabled}
@@ -240,6 +268,21 @@
         <dd class="m-0 flex flex-wrap items-center gap-1.5 border-b pb-3 md:py-3">
           {#if webhookOn}
             <Badge variant="outline" class="font-mono">webhook</Badge>
+          {/if}
+          {#if telegramOn}
+            <Badge variant="outline" class="font-mono">
+              telegram{agent.hasTelegramToken ? "" : " (no token)"}
+            </Badge>
+          {/if}
+          {#if !webhookOn && !telegramOn}
+            <em class="text-sm text-muted-foreground not-italic">none</em>
+          {/if}
+        </dd>
+
+        {@render fact("integrations")}
+        <dd class="m-0 flex flex-wrap items-center gap-1.5 border-b pb-3 md:py-3">
+          {#if agent.hasComposioKey}
+            <Badge variant="outline" class="font-mono">composio</Badge>
           {:else}
             <em class="text-sm text-muted-foreground not-italic">none</em>
           {/if}

@@ -13,6 +13,14 @@ export interface AgentTools {
   /** eve framework tools; optional on rows created before the toggles. */
   webFetch?: boolean;
   webSearch?: boolean;
+  /** Assistant capability groups; optional on rows created before them. */
+  memory?: boolean;
+  skills?: boolean;
+  reminders?: boolean;
+  eventTriggers?: boolean;
+  receipts?: boolean;
+  extras?: boolean;
+  delegation?: boolean;
 }
 
 export interface AgentSchedule {
@@ -23,6 +31,8 @@ export interface AgentSchedule {
 
 export interface AgentChannels {
   webhook: { enabled: boolean };
+  /** Optional on rows created before the telegram channel existed. */
+  telegram?: { enabled: boolean; allowedUserIds: string };
 }
 
 export type AgentStatus = "draft" | "deploying" | "live" | "failed" | "deleting";
@@ -40,6 +50,10 @@ export interface AgentSummary {
   channels?: AgentChannels;
   status: AgentStatus;
   hasGatewayKey: boolean;
+  hasTelegramToken?: boolean;
+  hasComposioKey?: boolean;
+  /** Optional on rows created before the timezone field existed. */
+  timezone?: string;
   projectSlug?: string;
   deploymentName?: string;
   deploymentUrl?: string;
@@ -84,8 +98,9 @@ export type AgentConfigInput = {
   model: string;
   instructions: string;
   tools: Required<AgentTools>;
+  timezone: string;
   schedule: AgentSchedule;
-  channels: AgentChannels;
+  channels: Required<AgentChannels>;
 };
 
 /**
@@ -105,12 +120,23 @@ export const agentsApi = {
   >("agents:get"),
   create: makeFunctionReference<
     "mutation",
-    DashboardAuth & AgentConfigInput & { aiGatewayApiKey?: string },
+    DashboardAuth &
+      AgentConfigInput & {
+        aiGatewayApiKey?: string;
+        telegramBotToken?: string;
+        composioApiKey?: string;
+      },
     string
   >("agents:create"),
   update: makeFunctionReference<
     "mutation",
-    DashboardAuth & AgentConfigInput & { agentId: string; aiGatewayApiKey?: string },
+    DashboardAuth &
+      AgentConfigInput & {
+        agentId: string;
+        aiGatewayApiKey?: string;
+        telegramBotToken?: string;
+        composioApiKey?: string;
+      },
     null
   >("agents:update"),
   requestDeploy: makeFunctionReference<

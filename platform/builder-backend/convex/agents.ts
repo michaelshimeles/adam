@@ -31,6 +31,8 @@ const agentSummary = v.object({
     v.literal("deleting"),
   ),
   hasGatewayKey: v.boolean(),
+  hasTelegramToken: v.optional(v.boolean()),
+  hasComposioKey: v.optional(v.boolean()),
   projectSlug: v.optional(v.string()),
   deploymentName: v.optional(v.string()),
   deploymentUrl: v.optional(v.string()),
@@ -60,7 +62,15 @@ const configArgs = {
     workflowStats: v.boolean(),
     webFetch: v.boolean(),
     webSearch: v.boolean(),
+    memory: v.boolean(),
+    skills: v.boolean(),
+    reminders: v.boolean(),
+    eventTriggers: v.boolean(),
+    receipts: v.boolean(),
+    extras: v.boolean(),
+    delegation: v.boolean(),
   }),
+  timezone: v.string(),
   schedule: v.object({
     enabled: v.boolean(),
     cron: v.string(),
@@ -68,6 +78,10 @@ const configArgs = {
   }),
   channels: v.object({
     webhook: v.object({ enabled: v.boolean() }),
+    telegram: v.object({
+      enabled: v.boolean(),
+      allowedUserIds: v.string(),
+    }),
   }),
 };
 
@@ -75,8 +89,19 @@ function validateConfig(args: {
   name: string;
   model: string;
   instructions: string;
+  timezone: string;
   schedule: { enabled: boolean; cron: string; prompt: string };
+  channels: { telegram: { allowedUserIds: string } };
 }): void {
+  if (args.timezone.trim().length === 0) {
+    throw new Error("Timezone is required (IANA name, e.g. America/Toronto)");
+  }
+  const ids = args.channels.telegram.allowedUserIds.trim();
+  if (ids.length > 0 && !/^[0-9]+(\s*,\s*[0-9]+)*$/.test(ids)) {
+    throw new Error(
+      "Telegram allowed user ids must be comma-separated numeric ids",
+    );
+  }
   if (args.name.trim().length < 2) throw new Error("Name must be at least 2 characters");
   if (args.name.length > 60) throw new Error("Name must be at most 60 characters");
   if (args.model.trim().length === 0) throw new Error("Model is required");
@@ -116,6 +141,8 @@ export const create = mutation({
     ...dashboardAuthArgs,
     ...configArgs,
     aiGatewayApiKey: v.optional(v.string()),
+    telegramBotToken: v.optional(v.string()),
+    composioApiKey: v.optional(v.string()),
   },
   returns: v.id("agents"),
   handler: async (ctx, args) => {
@@ -123,22 +150,29 @@ export const create = mutation({
     validateConfig(args);
     const now = Date.now();
     const key = args.aiGatewayApiKey?.trim();
+    const telegramToken = args.telegramBotToken?.trim();
+    const composioKey = args.composioApiKey?.trim();
     const agentId = await ctx.db.insert("agents", {
       name: args.name.trim(),
       slug: slugify(args.name),
       model: args.model.trim(),
       instructions: args.instructions,
       tools: args.tools,
+      timezone: args.timezone.trim(),
       schedule: args.schedule,
       channels: args.channels,
       status: "draft",
       hasGatewayKey: Boolean(key),
+      hasTelegramToken: Boolean(telegramToken),
+      hasComposioKey: Boolean(composioKey),
       createdAt: now,
       updatedAt: now,
     });
     await ctx.db.insert("agentSecrets", {
       agentId,
       aiGatewayApiKey: key || undefined,
+      telegramBotToken: telegramToken || undefined,
+      composioApiKey: composioKey || undefined,
       updatedAt: now,
     });
     return agentId;
@@ -152,6 +186,10 @@ export const update = mutation({
     ...configArgs,
     /** Omit to keep the stored key; pass a value to replace it; "" clears. */
     aiGatewayApiKey: v.optional(v.string()),
+    /** Same omit/replace/clear semantics as aiGatewayApiKey. */
+    telegramBotToken: v.optional(v.string()),
+    /** Same omit/replace/clear semantics as aiGatewayApiKey. */
+    composioApiKey: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -168,25 +206,38 @@ export const update = mutation({
     const now = Date.now();
 
     let hasGatewayKey = agent.hasGatewayKey;
+    let hasTelegramToken = agent.hasTelegramToken ?? false;
+    let hasComposioKey = agent.hasComposioKey ?? false;
+    const secretPatch: Record<string, string | number | undefined> = {};
     if (args.aiGatewayApiKey !== undefined) {
       const key = args.aiGatewayApiKey.trim();
+      secretPatch.aiGatewayApiKey = key || undefined;
+      hasGatewayKey = Boolean(key);
+    }
+    if (args.telegramBotToken !== undefined) {
+      const token = args.telegramBotToken.trim();
+      secretPatch.telegramBotToken = token || undefined;
+      hasTelegramToken = Boolean(token);
+    }
+    if (args.composioApiKey !== undefined) {
+      const key = args.composioApiKey.trim();
+      secretPatch.composioApiKey = key || undefined;
+      hasComposioKey = Boolean(key);
+    }
+    if (Object.keys(secretPatch).length > 0) {
       const secret = await ctx.db
         .query("agentSecrets")
         .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
         .unique();
       if (secret) {
-        await ctx.db.patch(secret._id, {
-          aiGatewayApiKey: key || undefined,
-          updatedAt: now,
-        });
+        await ctx.db.patch(secret._id, { ...secretPatch, updatedAt: now });
       } else {
         await ctx.db.insert("agentSecrets", {
           agentId: args.agentId,
-          aiGatewayApiKey: key || undefined,
+          ...secretPatch,
           updatedAt: now,
         });
       }
-      hasGatewayKey = Boolean(key);
     }
 
     await ctx.db.patch(args.agentId, {
@@ -194,9 +245,12 @@ export const update = mutation({
       model: args.model.trim(),
       instructions: args.instructions,
       tools: args.tools,
+      timezone: args.timezone.trim(),
       schedule: args.schedule,
       channels: args.channels,
       hasGatewayKey,
+      hasTelegramToken,
+      hasComposioKey,
       updatedAt: now,
     });
     return null;
