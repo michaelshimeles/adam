@@ -13,6 +13,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as keys from "../keys.js";
 import type * as lib from "../lib.js";
+import type * as models from "../models.js";
 import type * as staticHosting from "../staticHosting.js";
 import type * as worker from "../worker.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   keys: typeof keys;
   lib: typeof lib;
+  models: typeof models;
   staticHosting: typeof staticHosting;
   worker: typeof worker;
 }>;

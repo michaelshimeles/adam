@@ -256,14 +256,15 @@ function parseEnvLocal(text) {
 }
 
 /**
- * @param input  { config, aiGatewayApiKey?, existing? } — the worker `claim`
- *               payload (or a CLI-provided equivalent).
+ * @param input  { config, aiGatewayApiKey?, openRouterApiKey?, existing? } —
+ *               the worker `claim` payload (or a CLI-provided equivalent).
  * @param opts   { repoRoot, team, workRoot, log, setStep }
  */
 export async function deployAgent(input, opts) {
   const {
     config,
     aiGatewayApiKey,
+    openRouterApiKey,
     telegramBotToken,
     composioApiKey,
     convexDeployKey,
@@ -514,8 +515,14 @@ export async function deployAgent(input, opts) {
     WORKFLOW_QUEUE_NAMESPACE: QUEUE_NAMESPACE,
     AGENT_DEFAULT_TIMEZONE: config.timezone ?? "UTC",
   };
-  if (aiGatewayApiKey) {
-    envSets.AI_GATEWAY_API_KEY = aiGatewayApiKey;
+  // One model credential per deployment: AI Gateway wins if both exist.
+  const modelKeyEnvName = aiGatewayApiKey
+    ? "AI_GATEWAY_API_KEY"
+    : openRouterApiKey
+      ? "OPENROUTER_API_KEY"
+      : null;
+  if (modelKeyEnvName) {
+    envSets[modelKeyEnvName] = aiGatewayApiKey || openRouterApiKey;
     // Explicit opt-in: web chat bills the deployment key and the UI skips
     // the visitor-key dialog. Deployments holding a key only for schedules
     // (the adam demo) never set this and stay BYOK.
@@ -543,6 +550,10 @@ export async function deployAgent(input, opts) {
     });
   }
   const envRemovals = [];
+  // Redeploy that switched model-key providers: drop the other one so the
+  // deployment never carries two credentials.
+  if (modelKeyEnvName === "AI_GATEWAY_API_KEY") envRemovals.push("OPENROUTER_API_KEY");
+  if (modelKeyEnvName === "OPENROUTER_API_KEY") envRemovals.push("AI_GATEWAY_API_KEY");
   if (!webhookEnabled) envRemovals.push("WEBHOOK_CHANNEL_SECRET");
   if (!composioEnabled) envRemovals.push("COMPOSIO_API_KEY");
   if (!telegramEnabled) {
@@ -566,13 +577,13 @@ export async function deployAgent(input, opts) {
     });
   }
   log(
-    aiGatewayApiKey
-      ? "deployment credential set (AI_GATEWAY_API_KEY + CHAT_USE_DEPLOYMENT_KEY) — web chat bills it"
+    modelKeyEnvName
+      ? `deployment credential set (${modelKeyEnvName} + CHAT_USE_DEPLOYMENT_KEY) — web chat bills it`
       : "no deployment credential — chat will require a visitor key (builder should have blocked deploy)",
   );
-  if ((webhookEnabled || telegramEnabled) && !aiGatewayApiKey) {
+  if ((webhookEnabled || telegramEnabled) && !modelKeyEnvName) {
     log(
-      "warning: webhook/telegram channels are enabled but no AI Gateway key is configured — their turns will fail until one is added",
+      "warning: webhook/telegram channels are enabled but no model API key is configured — their turns will fail until one is added",
     );
   }
 
@@ -696,6 +707,7 @@ export async function deployAgent(input, opts) {
  */
 const TEARDOWN_ENV_VARS = [
   "AI_GATEWAY_API_KEY",
+  "OPENROUTER_API_KEY",
   "CHAT_USE_DEPLOYMENT_KEY",
   "VERCEL_OIDC_TOKEN",
   "WEBHOOK_CHANNEL_SECRET",

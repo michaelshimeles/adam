@@ -49,7 +49,10 @@ export interface AgentSummary {
   /** Optional on rows created before the channels section existed. */
   channels?: AgentChannels;
   status: AgentStatus;
+  /** True when a model credential (AI Gateway or OpenRouter) is stored. */
   hasGatewayKey: boolean;
+  /** Which provider the stored model credential belongs to; absent = gateway. */
+  modelKeyProvider?: "gateway" | "openrouter";
   hasTelegramToken?: boolean;
   hasComposioKey?: boolean;
   hasConvexDeployKey?: boolean;
@@ -123,7 +126,9 @@ export const agentsApi = {
     "mutation",
     DashboardAuth &
       AgentConfigInput & {
-        aiGatewayApiKey: string;
+        /** Exactly one of the two model keys is required. */
+        aiGatewayApiKey?: string;
+        openRouterApiKey?: string;
         telegramBotToken?: string;
         composioApiKey?: string;
         convexDeployKey?: string;
@@ -136,6 +141,7 @@ export const agentsApi = {
       AgentConfigInput & {
         agentId: string;
         aiGatewayApiKey?: string;
+        openRouterApiKey?: string;
         telegramBotToken?: string;
         composioApiKey?: string;
         convexDeployKey?: string;
@@ -180,13 +186,40 @@ export interface KeyValidationResult {
   error?: string;
 }
 
+export type ModelKeyProvider = "gateway" | "openrouter";
+
 export const keysApi = {
-  /** Server-side AI Gateway key check (the credits endpoint has no CORS). */
+  /** Server-side model key check (neither provider's endpoint has CORS). */
   validate: makeFunctionReference<
     "action",
-    DashboardAuth & { apiKey: string },
+    DashboardAuth & { apiKey: string; provider?: ModelKeyProvider },
     KeyValidationResult
   >("keys:validate"),
+};
+
+/** One entry of the model catalog (models:list). */
+export interface ModelOption {
+  id: string;
+  name: string;
+  description?: string;
+  /** Per-token USD prices, as strings. */
+  pricing?: { input: string; output: string };
+}
+
+export const modelsApi = {
+  /**
+   * Provider model catalog for the form's picker. Pass the key typed in the
+   * form, or an agentId to use its stored credential server-side.
+   */
+  list: makeFunctionReference<
+    "action",
+    DashboardAuth & {
+      apiKey?: string;
+      provider?: ModelKeyProvider;
+      agentId?: string;
+    },
+    { models: ModelOption[] }
+  >("models:list"),
 };
 
 export const BUILDER_CONVEX_URL: string =

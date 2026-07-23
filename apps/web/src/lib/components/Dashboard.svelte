@@ -155,7 +155,6 @@
             href="#/"
             title={IS_AGENT_APP ? BRAND_NAME : "Back to the homepage"}
           >
-            <span aria-hidden="true">▲</span>
             <span class="font-semibold tracking-[-0.28px]">{BRAND_NAME}</span>
           </a>
         {/if}

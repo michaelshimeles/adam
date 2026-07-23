@@ -39,6 +39,7 @@ export const claim = mutation({
       config: v.object(agentConfig),
       /** Deployment credentials (never exposed to the browser). */
       aiGatewayApiKey: v.optional(v.string()),
+      openRouterApiKey: v.optional(v.string()),
       telegramBotToken: v.optional(v.string()),
       composioApiKey: v.optional(v.string()),
       /** Bring-your-own-Convex: deploy into the key's deployment. */
@@ -160,6 +161,7 @@ export const claim = mutation({
         },
       },
       aiGatewayApiKey: secretRow?.aiGatewayApiKey,
+      openRouterApiKey: secretRow?.openRouterApiKey,
       telegramBotToken: secretRow?.telegramBotToken,
       composioApiKey: secretRow?.composioApiKey,
       convexDeployKey: secretRow?.convexDeployKey,
