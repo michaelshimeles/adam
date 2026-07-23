@@ -6,7 +6,7 @@ import {
   query,
 } from "./_generated/server";
 import {
-  hasOwnerCredential,
+  hostedChatEnabled,
   modelProviderValidator,
   normalizeProvider,
   type ModelProvider,
@@ -238,13 +238,15 @@ async function checkKey(
 }
 
 /**
- * Whether this deployment can chat without a visitor-supplied key.
- * Never returns the credential itself — only a boolean for the UI gate.
+ * Whether this deployment serves chat on its own credential (builder
+ * deployments set CHAT_USE_DEPLOYMENT_KEY=1 next to the key; the adam demo
+ * keeps its key schedule-only and stays BYOK). Never returns the credential
+ * itself — only a boolean for the UI gate.
  */
 export const hasDeploymentCredential = query({
   args: {},
   returns: v.boolean(),
-  handler: async () => hasOwnerCredential(),
+  handler: async () => hostedChatEnabled(),
 });
 
 /**

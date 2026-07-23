@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import {
+  hostedChatEnabled,
   modelProviderValidator,
   normalizeProvider,
   ownerApiKey,
@@ -82,7 +83,8 @@ export const list = action({
   args: {
     /**
      * Optional visitor BYOK key. When omitted, the deployment's own
-     * AI_GATEWAY_API_KEY / OPENROUTER_API_KEY is used (if present).
+     * credential is used — but only where chat itself is owner-billed
+     * (CHAT_USE_DEPLOYMENT_KEY=1, i.e. builder-deployed agents).
      */
     apiKey: v.optional(v.string()),
     provider: v.optional(modelProviderValidator),
@@ -90,6 +92,7 @@ export const list = action({
   returns: v.object({ models: v.array(modelOption) }),
   handler: async (_ctx, args): Promise<{ models: ModelOption[] }> => {
     const visitorKey = args.apiKey?.trim() ?? "";
+    if (visitorKey === "" && !hostedChatEnabled()) return { models: [] };
     const apiKey = visitorKey !== "" ? visitorKey : ownerApiKey();
     if (!apiKey) return { models: [] };
     const provider =

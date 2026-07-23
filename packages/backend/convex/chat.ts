@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import {
-  hasOwnerCredential,
+  hostedChatEnabled,
   modelProviderValidator,
   normalizeProvider,
 } from "./lib/modelKeys";
@@ -23,10 +23,12 @@ import { OWNER, withModelKey } from "./runner/modelKeyLock";
  * response returns immediately with the session id; the UI watches the
  * session's event stream reactively via ui:sessionEvents.
  *
- * Credentials: builder-deployed agents set AI_GATEWAY_API_KEY on the
- * deployment; when the client omits apiKey and that env is present, the
- * turn runs on owner credentials (same as schedules). Otherwise the caller
- * must bring a Vercel AI Gateway or OpenRouter key (BYOK).
+ * Credentials: builder-deployed agents set AI_GATEWAY_API_KEY plus
+ * CHAT_USE_DEPLOYMENT_KEY=1 on the deployment; when the client omits apiKey
+ * and that opt-in is present, the turn runs on owner credentials (same as
+ * schedules). Otherwise — including deployments that keep a key only for
+ * their schedules, like the adam demo — the caller must bring a Vercel AI
+ * Gateway or OpenRouter key (BYOK).
  */
 
 const sendResult = v.object({
@@ -40,8 +42,8 @@ const sendResult = v.object({
 export const send = action({
   args: {
     /**
-     * Optional visitor key. Omit when the deployment has its own
-     * AI_GATEWAY_API_KEY / OPENROUTER_API_KEY (builder-configured agents).
+     * Optional visitor key. Omit only on deployments that opted into
+     * serving chat on their own credential (builder-configured agents).
      */
     apiKey: v.optional(v.string()),
     /** Which service issued apiKey; omitted means "gateway". */
@@ -63,7 +65,7 @@ export const send = action({
   returns: sendResult,
   handler: async (ctx, args) => {
     const visitorKey = args.apiKey?.trim() ?? "";
-    const useOwner = visitorKey === "" && hasOwnerCredential();
+    const useOwner = visitorKey === "" && hostedChatEnabled();
     if (!useOwner && visitorKey === "") {
       return {
         ok: false,

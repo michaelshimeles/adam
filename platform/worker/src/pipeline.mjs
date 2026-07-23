@@ -514,7 +514,13 @@ export async function deployAgent(input, opts) {
     WORKFLOW_QUEUE_NAMESPACE: QUEUE_NAMESPACE,
     AGENT_DEFAULT_TIMEZONE: config.timezone ?? "UTC",
   };
-  if (aiGatewayApiKey) envSets.AI_GATEWAY_API_KEY = aiGatewayApiKey;
+  if (aiGatewayApiKey) {
+    envSets.AI_GATEWAY_API_KEY = aiGatewayApiKey;
+    // Explicit opt-in: web chat bills the deployment key and the UI skips
+    // the visitor-key dialog. Deployments holding a key only for schedules
+    // (the adam demo) never set this and stay BYOK.
+    envSets.CHAT_USE_DEPLOYMENT_KEY = "1";
+  }
   if (webhookSecret) envSets.WEBHOOK_CHANNEL_SECRET = webhookSecret;
   if (composioEnabled) envSets.COMPOSIO_API_KEY = composioApiKey;
   if (telegramEnabled) {
@@ -561,7 +567,7 @@ export async function deployAgent(input, opts) {
   }
   log(
     aiGatewayApiKey
-      ? "deployment credential set (AI_GATEWAY_API_KEY)"
+      ? "deployment credential set (AI_GATEWAY_API_KEY + CHAT_USE_DEPLOYMENT_KEY) — web chat bills it"
       : "no deployment credential — chat will require a visitor key (builder should have blocked deploy)",
   );
   if ((webhookEnabled || telegramEnabled) && !aiGatewayApiKey) {
@@ -690,6 +696,7 @@ export async function deployAgent(input, opts) {
  */
 const TEARDOWN_ENV_VARS = [
   "AI_GATEWAY_API_KEY",
+  "CHAT_USE_DEPLOYMENT_KEY",
   "VERCEL_OIDC_TOKEN",
   "WEBHOOK_CHANNEL_SECRET",
   "TELEGRAM_BOT_TOKEN",

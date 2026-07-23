@@ -31,12 +31,26 @@ export interface ModelKeyCredential {
   apiKey: string;
 }
 
-/** True when this deployment can bill model calls without a visitor key. */
+/** True when this deployment has its own model credential in the env. */
 export function hasOwnerCredential(): boolean {
   return (
     (process.env.AI_GATEWAY_API_KEY ?? "").trim() !== "" ||
     (process.env.VERCEL_OIDC_TOKEN ?? "").trim() !== "" ||
     (process.env.OPENROUTER_API_KEY ?? "").trim() !== ""
+  );
+}
+
+/**
+ * True when this deployment explicitly serves web chat on its own credential.
+ * Builder-deployed agents set CHAT_USE_DEPLOYMENT_KEY=1 alongside their key;
+ * deployments that keep a key only for scheduled/system sessions — the adam
+ * demo with its hourly heartbeat — stay BYOK for visitors. Merely having a
+ * credential must NOT open owner-billed anonymous chat.
+ */
+export function hostedChatEnabled(): boolean {
+  return (
+    (process.env.CHAT_USE_DEPLOYMENT_KEY ?? "").trim() === "1" &&
+    hasOwnerCredential()
   );
 }
 
