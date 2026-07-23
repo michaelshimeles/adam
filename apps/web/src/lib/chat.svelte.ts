@@ -52,6 +52,9 @@ export function createChatSession(options?: {
   let sendInFlight = $state(false);
   let errorMessage = $state<string | null>(null);
   let unsubscribe: (() => void) | null = null;
+  // Bumped by activate(); a send that resolves after a switch belongs to a
+  // previous epoch and must not touch the new session's state.
+  let epoch = 0;
 
   function persist(): void {
     if (sessionId) {
@@ -170,6 +173,7 @@ export function createChatSession(options?: {
 
   /** Point the chat at a different session (or a fresh one when null). */
   function activate(session: SessionRef | null): void {
+    epoch += 1;
     unsubscribe?.();
     unsubscribe = null;
     sessionId = session?.sessionId ?? null;
@@ -177,6 +181,7 @@ export function createChatSession(options?: {
     serverEvents = [];
     pending = [];
     inputEvents = [];
+    sendInFlight = false;
     errorMessage = null;
     if (session?.sessionId) subscribe(session.sessionId);
   }
@@ -220,6 +225,7 @@ export function createChatSession(options?: {
       ];
     }
     sendInFlight = true;
+    const sendEpoch = epoch;
     try {
       const result = await client.action(chatApi.send, {
         apiKey,
@@ -231,6 +237,7 @@ export function createChatSession(options?: {
           : {}),
         ...(sessionId && continuationToken ? { continuationToken } : {}),
       });
+      if (sendEpoch !== epoch) return; // switched sessions mid-flight
       if (!result.ok) {
         throw new Error(result.error ?? `chat send failed (${result.status})`);
       }
@@ -243,6 +250,7 @@ export function createChatSession(options?: {
       }
       persist();
     } catch (err) {
+      if (sendEpoch !== epoch) return;
       const message = err instanceof Error ? err.message : String(err);
       errorMessage = message;
       if (input.message !== undefined) {
@@ -251,7 +259,7 @@ export function createChatSession(options?: {
         );
       }
     } finally {
-      sendInFlight = false;
+      if (sendEpoch === epoch) sendInFlight = false;
     }
   }
 

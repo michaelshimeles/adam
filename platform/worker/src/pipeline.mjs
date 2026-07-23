@@ -681,19 +681,38 @@ export async function teardownAgent(job, opts) {
     : childEnv({ CONVEX_DEPLOYMENT: `dev:${job.deploymentName}` });
 
   log(`Scrubbing credentials on ${job.deploymentName}`);
+  // List first: proves the deployment is reachable with our credentials (a
+  // revoked deploy key must fail the teardown, not silently skip the scrub),
+  // and tells us which vars actually need removing.
+  let listOut;
+  try {
+    ({ output: listOut } = await run(convexBin, ["env", "list"], {
+      cwd: backendDir,
+      env,
+      log: () => {},
+      label: "env list",
+      timeoutMs: 60_000,
+    }));
+  } catch (err) {
+    throw new Error(
+      `cannot reach deployment ${job.deploymentName} to scrub credentials: ${err.message}`,
+    );
+  }
+  const present = new Set(
+    listOut
+      .split("\n")
+      .map((l) => l.match(/^([A-Z0-9_]+)=/)?.[1])
+      .filter(Boolean),
+  );
   for (const name of TEARDOWN_ENV_VARS) {
-    try {
-      await run(convexBin, ["env", "remove", name], {
-        cwd: backendDir,
-        env,
-        log,
-        label: `env remove ${name}`,
-        timeoutMs: 60_000,
-      });
-    } catch (err) {
-      // Var may simply not exist on this deployment — not fatal.
-      log(`env remove ${name} skipped: ${err.message}`);
-    }
+    if (!present.has(name)) continue;
+    await run(convexBin, ["env", "remove", name], {
+      cwd: backendDir,
+      env,
+      log,
+      label: `env remove ${name}`,
+      timeoutMs: 60_000,
+    });
   }
 
   log(`✓ credentials scrubbed — agent can no longer spend tokens`);
