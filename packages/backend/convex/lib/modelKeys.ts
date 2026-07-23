@@ -56,10 +56,15 @@ export function ownerProvider(): ModelProvider | null {
   return ownerOpenRouterKey() !== undefined ? "openrouter" : "gateway";
 }
 
-/** The deployment env key value for catalog fetches (never expose to clients). */
+/** The deployment env credential for catalog fetches (never expose to clients). */
 export function ownerApiKey(): string | null {
   const openRouter = ownerOpenRouterKey();
   if (openRouter !== undefined) return openRouter;
   const gateway = (process.env.AI_GATEWAY_API_KEY ?? "").trim();
-  return gateway === "" ? null : gateway;
+  if (gateway !== "") return gateway;
+  // OIDC-only deployments: the gateway accepts the OIDC token as bearer auth
+  // (the same fallback the AI SDK's gateway provider uses), so the catalog
+  // stays available wherever hasOwnerCredential() hides the key dialog.
+  const oidc = (process.env.VERCEL_OIDC_TOKEN ?? "").trim();
+  return oidc === "" ? null : oidc;
 }

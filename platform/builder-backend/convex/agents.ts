@@ -572,8 +572,10 @@ export const jobLogs = query({
     requireDashboardSecret(args.dashboardSecret);
     const job = await ctx.db.get(args.jobId);
     if (!job) return [];
+    // Orphaned jobs (agent row already purged) belong to nobody — never
+    // expose their logs.
     const agent = await ctx.db.get(job.agentId);
-    if (agent && !ownsAgent(agent, args.ownerToken?.trim() || undefined)) {
+    if (!agent || !ownsAgent(agent, args.ownerToken?.trim() || undefined)) {
       return [];
     }
     // Deploy logs are bounded (worker truncates long lines, ~few hundred
