@@ -130,10 +130,13 @@ function parseModelMarker(text: string): string | null {
 }
 
 export default defineAgent({
+  // step.started, not turn.started: in eve 0.22 the step-level dispatch is
+  // the one whose ctx.messages includes the current turn's just-injected
+  // "Client context:" message (turn.started sees only prior conversation).
   model: defineDynamic({
     fallback: DEFAULT_MODEL,
     events: {
-      "turn.started": (_event, ctx) => requestedModel(ctx.messages),
+      "step.started": (_event, ctx) => requestedModel(ctx.messages),
     },
   }),
   experimental: {
