@@ -94,6 +94,7 @@ export default defineSchema({
     hasGatewayKey: v.boolean(),
     hasTelegramToken: v.optional(v.boolean()),
     hasComposioKey: v.optional(v.boolean()),
+    hasConvexDeployKey: v.optional(v.boolean()),
     // Deployment identity, populated after the first successful deploy.
     projectSlug: v.optional(v.string()),
     deploymentName: v.optional(v.string()),
@@ -125,6 +126,13 @@ export default defineSchema({
     telegramBotToken: v.optional(v.string()),
     /** Composio API key for the composio MCP connection. */
     composioApiKey: v.optional(v.string()),
+    /**
+     * Bring-your-own-Convex: a deployment deploy key (prod:<name>|…) from
+     * the user's own Convex project. When set, the pipeline deploys the
+     * agent into that deployment instead of provisioning a project in the
+     * operator's team.
+     */
+    convexDeployKey: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_agent", ["agentId"]),
 

@@ -328,6 +328,9 @@
               >
                 {agent.deploymentName} ↗
               </a>
+              {#if agent.hasConvexDeployKey}
+                <Badge variant="outline" class="ml-2 font-mono">your Convex</Badge>
+              {/if}
             {:else}
               <em class="text-sm text-muted-foreground not-italic">—</em>
             {/if}

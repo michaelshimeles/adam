@@ -41,6 +41,8 @@ export const claim = mutation({
       aiGatewayApiKey: v.optional(v.string()),
       telegramBotToken: v.optional(v.string()),
       composioApiKey: v.optional(v.string()),
+      /** Bring-your-own-Convex: deploy into the key's deployment. */
+      convexDeployKey: v.optional(v.string()),
       /** Existing webhook secret, reused on redeploy. */
       webhookSecret: v.optional(v.string()),
       /** Present on redeploys — pipeline skips provisioning. */
@@ -60,6 +62,8 @@ export const claim = mutation({
       name: v.string(),
       projectSlug: v.optional(v.string()),
       deploymentName: v.optional(v.string()),
+      /** Needed to scrub a bring-your-own-Convex deployment. */
+      convexDeployKey: v.optional(v.string()),
     }),
     v.null(),
   ),
@@ -95,6 +99,10 @@ export const claim = mutation({
     });
 
     if (job.kind === "delete") {
+      const secretRow = await ctx.db
+        .query("agentSecrets")
+        .withIndex("by_agent", (q) => q.eq("agentId", agent._id))
+        .unique();
       return {
         kind: "delete" as const,
         jobId: job._id,
@@ -102,6 +110,7 @@ export const claim = mutation({
         name: agent.name,
         projectSlug: agent.projectSlug,
         deploymentName: agent.deploymentName,
+        convexDeployKey: secretRow?.convexDeployKey,
       };
     }
 
@@ -153,6 +162,7 @@ export const claim = mutation({
       aiGatewayApiKey: secretRow?.aiGatewayApiKey,
       telegramBotToken: secretRow?.telegramBotToken,
       composioApiKey: secretRow?.composioApiKey,
+      convexDeployKey: secretRow?.convexDeployKey,
       /** Reused on redeploy so the caller-facing secret stays stable. */
       webhookSecret: agent.webhookSecret,
       existing,

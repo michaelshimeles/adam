@@ -9,6 +9,7 @@
  */
 
 import type * as agents from "../agents.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib from "../lib.js";
 import type * as staticHosting from "../staticHosting.js";
@@ -22,6 +23,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agents: typeof agents;
+  crons: typeof crons;
   http: typeof http;
   lib: typeof lib;
   staticHosting: typeof staticHosting;

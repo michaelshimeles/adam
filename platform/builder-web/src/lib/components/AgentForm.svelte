@@ -76,6 +76,7 @@ You are a helpful, durable agent running on Convex.
   let telegramAllowedUserIds = $state(initial?.channels?.telegram?.allowedUserIds ?? "");
   let telegramToken = $state("");
   let composioKey = $state("");
+  let convexDeployKey = $state("");
   let scheduleEnabled = $state(initial?.schedule.enabled ?? false);
   let scheduleCron = $state(initial?.schedule.cron ?? "0 * * * *");
   let schedulePrompt = $state(
@@ -120,6 +121,7 @@ You are a helpful, durable agent running on Convex.
           ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
           ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
           ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
+          ...(convexDeployKey.trim() ? { convexDeployKey: convexDeployKey.trim() } : {}),
         });
         onDone(agent._id);
       } else {
@@ -129,6 +131,7 @@ You are a helpful, durable agent running on Convex.
           ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
           ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
           ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
+          ...(convexDeployKey.trim() ? { convexDeployKey: convexDeployKey.trim() } : {}),
         });
         onDone(id);
       }
@@ -405,6 +408,34 @@ You are a helpful, durable agent running on Convex.
           prefilled from your local env (VITE_AI_GATEWAY_API_KEY)
         </p>
       {/if}
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label for="convex-deploy-key" class="flex-wrap">
+        Convex deploy key
+        <span class="font-normal text-muted-foreground">
+          (optional — deploy this agent into your own Convex project instead of the
+          builder's account{agent?.hasConvexDeployKey
+            ? "; a key is already stored, leave blank to keep it"
+            : ""})
+        </span>
+      </Label>
+      <Input
+        id="convex-deploy-key"
+        bind:value={convexDeployKey}
+        type="password"
+        class="font-mono"
+        placeholder={agent?.hasConvexDeployKey
+          ? "•••••••• (stored)"
+          : "prod:your-deployment-123|…"}
+        autocomplete="off"
+      />
+      <p class="m-0 text-xs leading-4 text-muted-foreground">
+        Generate one in your Convex project under Settings → Deploy key. The agent's
+        functions, data and web app all live in that deployment.
+        {#if agent?.deploymentName}
+          Can't be added or removed after the first deploy.
+        {/if}
+      </p>
     </div>
   </section>
 

@@ -214,8 +214,14 @@ function parseEnvLocal(text) {
  * @param opts   { repoRoot, team, workRoot, log, setStep }
  */
 export async function deployAgent(input, opts) {
-  const { config, aiGatewayApiKey, telegramBotToken, composioApiKey, existing } =
-    input;
+  const {
+    config,
+    aiGatewayApiKey,
+    telegramBotToken,
+    composioApiKey,
+    convexDeployKey,
+    existing,
+  } = input;
   const priorWebhookSecret = input.webhookSecret;
   const { repoRoot, team, workRoot, log } = opts;
   const setStep = opts.setStep ?? (() => {});
@@ -355,10 +361,33 @@ export async function deployAgent(input, opts) {
   // ---- provision -----------------------------------------------------------
   await setStep("provision");
   const convexBin = join(backendDir, "node_modules/.bin/convex");
+  // Bring-your-own-Convex: the deploy key selects the target deployment for
+  // every CLI call, so the user's agent lives in their own Convex account
+  // (no project is created in the operator's team).
+  const convexCliEnv = convexDeployKey
+    ? childEnv({ CONVEX_DEPLOY_KEY: convexDeployKey })
+    : undefined;
   let projectSlug;
   let deploymentName;
 
-  if (existing) {
+  if (convexDeployKey) {
+    const match = convexDeployKey.match(/^(?:prod|dev):([a-z0-9-]+)\|/);
+    if (!match) {
+      throw new Error(
+        'Convex deploy key is not a deployment deploy key (expected "prod:<deployment-name>|…" from the project\'s Settings → Deploy key)',
+      );
+    }
+    deploymentName = match[1];
+    projectSlug = existing?.projectSlug ?? config.slug;
+    log(`Deploying to user-owned Convex deployment ${deploymentName} (deploy key)`);
+    await run(convexBin, ["deploy", "--yes"], {
+      cwd: backendDir,
+      env: convexCliEnv,
+      log,
+      label: "convex deploy",
+      timeoutMs: 10 * 60_000,
+    });
+  } else if (existing) {
     projectSlug = existing.projectSlug;
     deploymentName = existing.deploymentName;
     log(`Redeploying to existing deployment ${deploymentName}`);
@@ -404,6 +433,7 @@ export async function deployAgent(input, opts) {
   await setStep("configure");
   const { output: envListOut } = await run(convexBin, ["env", "list"], {
     cwd: backendDir,
+    env: convexCliEnv,
     log: () => {},
     label: "convex env list",
     timeoutMs: 60_000,
@@ -453,6 +483,7 @@ export async function deployAgent(input, opts) {
   for (const [name, value] of Object.entries(envSets)) {
     await run(convexBin, ["env", "set", name, value], {
       cwd: backendDir,
+      env: convexCliEnv,
       log: (l) => log(l.replace(value, "***")),
       label: `env set ${name}`,
       timeoutMs: 60_000,
@@ -475,6 +506,7 @@ export async function deployAgent(input, opts) {
     if (!remoteEnv.has(name)) continue;
     await run(convexBin, ["env", "remove", name], {
       cwd: backendDir,
+      env: convexCliEnv,
       log,
       label: `env remove ${name}`,
       timeoutMs: 60_000,
@@ -545,7 +577,7 @@ export async function deployAgent(input, opts) {
   const hostingBin = join(backendDir, "node_modules/.bin/static-hosting");
   await run(hostingBin, ["upload", "--dist", webDist], {
     cwd: backendDir,
-    env: childEnv({ CONVEX_DEPLOYMENT: `dev:${deploymentName}` }),
+    env: convexCliEnv ?? childEnv({ CONVEX_DEPLOYMENT: `dev:${deploymentName}` }),
     log,
     label: "static hosting upload",
     timeoutMs: 5 * 60_000,
@@ -555,6 +587,7 @@ export async function deployAgent(input, opts) {
   await setStep("verify");
   const { output: probeOut } = await run(convexBin, ["run", "runner/probe:probe"], {
     cwd: backendDir,
+    env: convexCliEnv,
     log,
     label: "probe",
     timeoutMs: 3 * 60_000,
@@ -623,7 +656,8 @@ const TEARDOWN_ENV_VARS = [
  * The Convex CLI has no project-delete command, so the project itself stays
  * until removed in the Convex dashboard (link logged below).
  *
- * @param job  { name, projectSlug?, deploymentName? } — worker `claim` payload
+ * @param job  { name, projectSlug?, deploymentName?, convexDeployKey? } —
+ *             worker `claim` payload
  * @param opts { repoRoot, log, setStep }
  */
 export async function teardownAgent(job, opts) {
@@ -640,7 +674,11 @@ export async function teardownAgent(job, opts) {
   // comes from CONVEX_DEPLOYMENT (process env wins over any .env.local).
   const backendDir = join(repoRoot, "packages/backend");
   const convexBin = join(backendDir, "node_modules/.bin/convex");
-  const env = childEnv({ CONVEX_DEPLOYMENT: `dev:${job.deploymentName}` });
+  // Bring-your-own-Convex deployments are reached via their deploy key; the
+  // operator's account has no access to them.
+  const env = job.convexDeployKey
+    ? childEnv({ CONVEX_DEPLOY_KEY: job.convexDeployKey })
+    : childEnv({ CONVEX_DEPLOYMENT: `dev:${job.deploymentName}` });
 
   log(`Scrubbing credentials on ${job.deploymentName}`);
   for (const name of TEARDOWN_ENV_VARS) {

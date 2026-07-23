@@ -32,32 +32,20 @@ interface PendingMessage {
   failed?: string;
 }
 
-interface PersistedSession {
+export interface SessionRef {
   sessionId: string;
   continuationToken?: string;
 }
 
-const STORAGE_KEY = "eve-convex-chat-session";
-
-function loadPersisted(): PersistedSession | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedSession;
-    return typeof parsed.sessionId === "string" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function createChatSession() {
+export function createChatSession(options?: {
+  /** Fired when a send creates or advances the session, so the caller can persist it. */
+  onSessionChange?: (session: SessionRef) => void;
+}) {
   const client = useConvexClient();
   const reducer = defaultMessageReducer();
 
-  const persisted = loadPersisted();
-
-  let sessionId = $state<string | null>(persisted?.sessionId ?? null);
-  let continuationToken: string | undefined = persisted?.continuationToken;
+  let sessionId = $state<string | null>(null);
+  let continuationToken: string | undefined;
   let serverEvents = $state<HandleMessageStreamEvent[]>([]);
   let pending = $state<PendingMessage[]>([]);
   let inputEvents = $state<ClientInputRespondedEvent[]>([]);
@@ -66,17 +54,8 @@ export function createChatSession() {
   let unsubscribe: (() => void) | null = null;
 
   function persist(): void {
-    try {
-      if (sessionId) {
-        sessionStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ sessionId, continuationToken }),
-        );
-      } else {
-        sessionStorage.removeItem(STORAGE_KEY);
-      }
-    } catch {
-      // storage unavailable (private mode etc.) — session just won't survive reloads
+    if (sessionId) {
+      options?.onSessionChange?.({ sessionId, continuationToken });
     }
   }
 
@@ -187,10 +166,20 @@ export function createChatSession() {
     );
   }
 
-  // Resume the persisted session (plain value, not the $state proxy — this
-  // runs once at setup and must not register a reactive read).
-  if (persisted?.sessionId) subscribe(persisted.sessionId);
   onDestroy(() => unsubscribe?.());
+
+  /** Point the chat at a different session (or a fresh one when null). */
+  function activate(session: SessionRef | null): void {
+    unsubscribe?.();
+    unsubscribe = null;
+    sessionId = session?.sessionId ?? null;
+    continuationToken = session?.continuationToken;
+    serverEvents = [];
+    pending = [];
+    inputEvents = [];
+    errorMessage = null;
+    if (session?.sessionId) subscribe(session.sessionId);
+  }
 
   async function send(input: {
     message?: string;
@@ -267,15 +256,7 @@ export function createChatSession() {
   }
 
   function reset(): void {
-    unsubscribe?.();
-    unsubscribe = null;
-    sessionId = null;
-    continuationToken = undefined;
-    serverEvents = [];
-    pending = [];
-    inputEvents = [];
-    errorMessage = null;
-    persist();
+    activate(null);
   }
 
   return {
@@ -293,5 +274,6 @@ export function createChatSession() {
     },
     send,
     reset,
+    activate,
   };
 }

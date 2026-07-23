@@ -134,6 +134,7 @@ for (;;) {
         aiGatewayApiKey: job.aiGatewayApiKey,
         telegramBotToken: job.telegramBotToken,
         composioApiKey: job.composioApiKey,
+        convexDeployKey: job.convexDeployKey,
         webhookSecret: job.webhookSecret,
         existing: job.existing,
       },
