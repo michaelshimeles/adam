@@ -162,3 +162,14 @@ export const keysApi = {
 export const CONVEX_URL: string =
   (import.meta.env.VITE_CONVEX_URL as string | undefined) ??
   "http://127.0.0.1:3210";
+
+/**
+ * The agent builder UI — where agents are created and managed. Dev builds
+ * link to builder-web's local dev server (port pinned in its vite.config);
+ * production builds link to the hosted builder. VITE_BUILDER_URL overrides.
+ */
+export const BUILDER_URL: string =
+  (import.meta.env.VITE_BUILDER_URL as string | undefined) ??
+  (import.meta.env.DEV
+    ? "http://localhost:5175"
+    : "https://rosy-goldfish-504.convex.site");

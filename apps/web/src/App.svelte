@@ -1,6 +1,5 @@
 <script lang="ts">
   import { setupConvex } from "convex-svelte";
-  import { onDestroy } from "svelte";
   import { CONVEX_URL } from "./lib/api";
   import { BRAND_NAME, IS_AGENT_APP } from "./lib/brand";
   import Dashboard from "./lib/components/Dashboard.svelte";
@@ -13,19 +12,11 @@
     document.title = `${BRAND_NAME} — agent on Convex`;
   }
 
-  // Tiny hash router: "#/dashboard" is the app, everything else the homepage.
-  // Deployed agent apps have no homepage — the dashboard IS the app.
-  let hash = $state(window.location.hash);
-  const onHashChange = () => (hash = window.location.hash);
-  window.addEventListener("hashchange", onHashChange);
-  onDestroy(() => window.removeEventListener("hashchange", onHashChange));
-
-  const showDashboard = $derived(
-    IS_AGENT_APP || hash.replace(/^#\/?/, "").startsWith("dashboard"),
-  );
+  // Deployed agent apps are the dashboard; the adam build is landing-only
+  // (agents are created and managed in the builder instead).
 </script>
 
-{#if showDashboard}
+{#if IS_AGENT_APP}
   <Dashboard />
 {:else}
   <Landing />
