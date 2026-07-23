@@ -2,14 +2,14 @@
 
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { loadEveBundle } from "./bundle";
 
 /**
- * Dispatches eve markdown schedules (agent/schedules/*.md) through the
- * bundled runtime. The eve server ran these on an in-process croner; here a
- * Convex cron (crons.ts) triggers them instead. Sessions started by a
- * schedule become normal durable runs executed by runner/engine:tick.
+ * Dispatches eve schedules (agent/schedules/*) through the bundled runtime.
+ * The eve server ran these on an in-process croner; here Convex crons
+ * (crons.ts) trigger them instead. Sessions started by a schedule become
+ * normal durable runs executed by runner/engine:tick.
  */
 
 function scheduleTaskName(schedulePath: string): string {
@@ -17,27 +17,48 @@ function scheduleTaskName(schedulePath: string): string {
   return `eve.schedule.${Buffer.from(schedulePath, "utf-8").toString("base64url")}`;
 }
 
+async function dispatchSchedule(
+  ctx: ActionCtx,
+  schedulePath: string,
+): Promise<{ sessionIds: string[] }> {
+  const { bundle } = await loadEveBundle(ctx);
+  if (typeof bundle.dispatchScheduleTask !== "function") {
+    throw new Error(
+      `this agent bundle was built without schedules — remove the cron for ` +
+        `${schedulePath} or add the schedule file and rebuild`,
+    );
+  }
+  const result = (await bundle.dispatchScheduleTask(
+    scheduleTaskName(schedulePath),
+    { dev: false },
+  )) as { scheduleId: string; sessionIds: string[] };
+  // BYOK: schedule sessions are deployment-initiated — mark them so the
+  // runner executes them on the deployment's own credentials instead of
+  // holding them for a visitor key that will never arrive.
+  for (const sessionId of result.sessionIds) {
+    await ctx.runMutation(internal.keys.markSystem, { sessionId });
+  }
+  return { sessionIds: result.sessionIds };
+}
+
+const scheduleResult = v.object({ sessionIds: v.array(v.string()) });
+
 export const heartbeat = internalAction({
   args: {},
-  returns: v.object({ sessionIds: v.array(v.string()) }),
-  handler: async (ctx) => {
-    const { bundle } = await loadEveBundle(ctx);
-    if (typeof bundle.dispatchScheduleTask !== "function") {
-      throw new Error(
-        "this agent bundle was built without schedules — remove the " +
-          "heartbeat cron or add agent/schedules/*.md and rebuild",
-      );
-    }
-    const result = (await bundle.dispatchScheduleTask(
-      scheduleTaskName("schedules/heartbeat.md"),
-      { dev: false },
-    )) as { scheduleId: string; sessionIds: string[] };
-    // BYOK: schedule sessions are deployment-initiated — mark them so the
-    // runner executes them on the deployment's own credentials instead of
-    // holding them for a visitor key that will never arrive.
-    for (const sessionId of result.sessionIds) {
-      await ctx.runMutation(internal.keys.markSystem, { sessionId });
-    }
-    return { sessionIds: result.sessionIds };
-  },
+  returns: scheduleResult,
+  handler: (ctx) => dispatchSchedule(ctx, "schedules/heartbeat.md"),
+});
+
+/** Minute-level dispatcher for agent-created reminders (reminders table). */
+export const reminders = internalAction({
+  args: {},
+  returns: scheduleResult,
+  handler: (ctx) => dispatchSchedule(ctx, "schedules/reminders.ts"),
+});
+
+/** Nightly long-term-memory consolidation pass (memories table). */
+export const memoryConsolidation = internalAction({
+  args: {},
+  returns: scheduleResult,
+  handler: (ctx) => dispatchSchedule(ctx, "schedules/memory-consolidation.md"),
 });

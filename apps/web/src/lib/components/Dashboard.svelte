@@ -3,6 +3,7 @@
   import { AGENT_MODEL, BRAND_NAME, IS_AGENT_APP, WEBHOOK_ENABLED } from "../brand";
   import ApiKeyDialog from "./ApiKeyDialog.svelte";
   import Chat from "./Chat.svelte";
+  import InboxPanel from "./InboxPanel.svelte";
   import NotesPanel from "./NotesPanel.svelte";
   import QueueChips from "./QueueChips.svelte";
   import RunDetail from "./RunDetail.svelte";
@@ -57,6 +58,7 @@
   >
     <Chat />
     <div class="flex min-h-[500px] flex-col gap-4 lg:min-h-0">
+      <InboxPanel />
       <NotesPanel />
       {#if WEBHOOK_ENABLED}
         <WebhookPanel />

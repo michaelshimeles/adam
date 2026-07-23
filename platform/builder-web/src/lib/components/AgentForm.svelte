@@ -45,6 +45,13 @@ You are a helpful, durable agent running on Convex.
     workflowStats: initial?.tools.workflowStats ?? true,
     webFetch: initial?.tools.webFetch ?? true,
     webSearch: initial?.tools.webSearch ?? true,
+    memory: initial?.tools.memory ?? true,
+    skills: initial?.tools.skills ?? true,
+    reminders: initial?.tools.reminders ?? true,
+    eventTriggers: initial?.tools.eventTriggers ?? true,
+    receipts: initial?.tools.receipts ?? true,
+    extras: initial?.tools.extras ?? true,
+    delegation: initial?.tools.delegation ?? true,
   });
   const TOOL_META: { key: keyof typeof tools; name: string; hint: string }[] = [
     { key: "saveNote", name: "save_note", hint: "persist a note" },
@@ -54,7 +61,21 @@ You are a helpful, durable agent running on Convex.
     { key: "webFetch", name: "web_fetch", hint: "read pages as markdown" },
     { key: "webSearch", name: "web_search", hint: "search the web" },
   ];
+  const CAPABILITY_META: { key: keyof typeof tools; name: string; hint: string }[] = [
+    { key: "memory", name: "memory", hint: "remember/forget + profile + nightly consolidation" },
+    { key: "skills", name: "skills", hint: "chat-created reusable skills" },
+    { key: "reminders", name: "reminders", hint: "one-off + recurring, delivered proactively" },
+    { key: "eventTriggers", name: "event triggers", hint: "agent-created webhook URLs" },
+    { key: "receipts", name: "receipts", hint: "spending log + summaries" },
+    { key: "extras", name: "extras", hint: "weather + dice" },
+    { key: "delegation", name: "delegation", hint: "subagent workflow tool" },
+  ];
+  let timezone = $state(initial?.timezone ?? "UTC");
   let webhookEnabled = $state(initial?.channels?.webhook.enabled ?? false);
+  let telegramEnabled = $state(initial?.channels?.telegram?.enabled ?? false);
+  let telegramAllowedUserIds = $state(initial?.channels?.telegram?.allowedUserIds ?? "");
+  let telegramToken = $state("");
+  let composioKey = $state("");
   let scheduleEnabled = $state(initial?.schedule.enabled ?? false);
   let scheduleCron = $state(initial?.schedule.cron ?? "0 * * * *");
   let schedulePrompt = $state(
@@ -78,12 +99,16 @@ You are a helpful, durable agent running on Convex.
       model,
       instructions,
       tools: { ...tools },
+      timezone,
       schedule: {
         enabled: scheduleEnabled,
         cron: scheduleCron,
         prompt: schedulePrompt,
       },
-      channels: { webhook: { enabled: webhookEnabled } },
+      channels: {
+        webhook: { enabled: webhookEnabled },
+        telegram: { enabled: telegramEnabled, allowedUserIds: telegramAllowedUserIds },
+      },
     };
     try {
       if (agent) {
@@ -91,8 +116,10 @@ You are a helpful, durable agent running on Convex.
           agentId: agent._id,
           ...config,
           ...authArgs(),
-          // Only replace the stored key when a new one was typed.
+          // Only replace stored secrets when a new value was typed.
           ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
+          ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
+          ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
         });
         onDone(agent._id);
       } else {
@@ -100,6 +127,8 @@ You are a helpful, durable agent running on Convex.
           ...config,
           ...authArgs(),
           ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
+          ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
+          ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
         });
         onDone(id);
       }
@@ -160,6 +189,18 @@ You are a helpful, durable agent running on Convex.
           {/each}
         </datalist>
       </div>
+      <div class="flex flex-col gap-1.5">
+        <Label for="agent-timezone">
+          Timezone <span class="font-normal text-muted-foreground">(IANA — reminders + time rendering)</span>
+        </Label>
+        <Input
+          id="agent-timezone"
+          bind:value={timezone}
+          class="font-mono"
+          placeholder="America/Toronto"
+          required
+        />
+      </div>
     </div>
   </section>
 
@@ -183,6 +224,21 @@ You are a helpful, durable agent running on Convex.
           <Label for="tool-{tool.key}" class="gap-1.5 font-normal">
             <code class="font-mono text-xs">{tool.name}</code>
             <span class="text-xs text-muted-foreground">— {tool.hint}</span>
+          </Label>
+        </div>
+      {/each}
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-3 border-t pt-5">
+    {@render sectionTitle("Assistant capabilities", "eve-style personal-assistant features")}
+    <div class="grid gap-x-6 gap-y-2.5 md:grid-cols-2">
+      {#each CAPABILITY_META as cap (cap.key)}
+        <div class="flex items-center gap-2.5">
+          <Checkbox id="cap-{cap.key}" bind:checked={tools[cap.key]} />
+          <Label for="cap-{cap.key}" class="gap-1.5 font-normal">
+            <code class="font-mono text-xs">{cap.name}</code>
+            <span class="text-xs text-muted-foreground">— {cap.hint}</span>
           </Label>
         </div>
       {/each}
@@ -215,6 +271,79 @@ You are a helpful, durable agent running on Convex.
         </p>
       {/if}
     {/if}
+    <div class="flex items-center gap-2.5">
+      <Checkbox id="channel-telegram" bind:checked={telegramEnabled} />
+      <Label for="channel-telegram" class="gap-1.5 font-normal">
+        <code class="font-mono text-xs">telegram</code>
+        <span class="text-xs text-muted-foreground">
+          — chat with the agent from Telegram (private DMs; needs a bot token from @BotFather)
+        </span>
+      </Label>
+    </div>
+    {#if telegramEnabled}
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class="flex flex-col gap-1.5">
+          <Label for="telegram-token" class="flex-wrap">
+            Bot token
+            <span class="font-normal text-muted-foreground">
+              {agent?.hasTelegramToken ? "(stored — leave blank to keep it)" : "(required)"}
+            </span>
+          </Label>
+          <Input
+            id="telegram-token"
+            bind:value={telegramToken}
+            type="password"
+            class="font-mono"
+            placeholder={agent?.hasTelegramToken ? "•••••••• (stored)" : "123456:ABC…"}
+            autocomplete="off"
+          />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label for="telegram-allowlist">
+            Allowed user ids
+            <span class="font-normal text-muted-foreground">(comma-separated; blank = any private DM)</span>
+          </Label>
+          <Input
+            id="telegram-allowlist"
+            bind:value={telegramAllowedUserIds}
+            class="font-mono"
+            placeholder="12345678, 87654321"
+          />
+        </div>
+      </div>
+      <p class="m-0 text-xs leading-4 text-muted-foreground">
+        The deploy registers the bot's webhook automatically. Telegram sessions run on the
+        deployment's own credential.
+      </p>
+      {#if !agent?.hasGatewayKey && !gatewayKey.trim()}
+        <p class="m-0 text-xs leading-4 text-amber-900">
+          Telegram sessions run on the deployment's own credential — add an AI Gateway key below
+          or Telegram turns will fail.
+        </p>
+      {/if}
+    {/if}
+  </section>
+
+  <section class="flex flex-col gap-3 border-t pt-5">
+    {@render sectionTitle("Integrations")}
+    <div class="flex flex-col gap-1.5">
+      <Label for="composio-key" class="flex-wrap">
+        Composio API key
+        <span class="font-normal text-muted-foreground">
+          (optional — connects Gmail, Calendar, Notion, Slack and 1000+ apps via MCP{agent?.hasComposioKey
+            ? "; a key is already stored, leave blank to keep it"
+            : ""})
+        </span>
+      </Label>
+      <Input
+        id="composio-key"
+        bind:value={composioKey}
+        type="password"
+        class="font-mono"
+        placeholder={agent?.hasComposioKey ? "•••••••• (stored)" : "ak_…"}
+        autocomplete="off"
+      />
+    </div>
   </section>
 
   <section class="flex flex-col gap-3 border-t pt-5">

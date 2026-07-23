@@ -37,8 +37,10 @@ export const claim = mutation({
       jobId: v.id("deployJobs"),
       agentId: v.id("agents"),
       config: v.object(agentConfig),
-      /** Deployment credential (never exposed to the browser). */
+      /** Deployment credentials (never exposed to the browser). */
       aiGatewayApiKey: v.optional(v.string()),
+      telegramBotToken: v.optional(v.string()),
+      composioApiKey: v.optional(v.string()),
       /** Existing webhook secret, reused on redeploy. */
       webhookSecret: v.optional(v.string()),
       /** Present on redeploys — pipeline skips provisioning. */
@@ -126,16 +128,31 @@ export const claim = mutation({
         slug: agent.slug,
         model: agent.model,
         instructions: agent.instructions,
-        // Framework web tools default ON for rows created before the toggles.
+        // Framework/capability toggles default ON for rows created before
+        // the toggles existed.
         tools: {
           ...agent.tools,
           webFetch: agent.tools.webFetch ?? true,
           webSearch: agent.tools.webSearch ?? true,
+          memory: agent.tools.memory ?? true,
+          skills: agent.tools.skills ?? true,
+          reminders: agent.tools.reminders ?? true,
+          eventTriggers: agent.tools.eventTriggers ?? true,
+          receipts: agent.tools.receipts ?? true,
+          extras: agent.tools.extras ?? true,
+          delegation: agent.tools.delegation ?? true,
         },
+        timezone: agent.timezone ?? "UTC",
         schedule: agent.schedule,
-        channels: agent.channels ?? { webhook: { enabled: false } },
+        channels: {
+          webhook: agent.channels?.webhook ?? { enabled: false },
+          telegram:
+            agent.channels?.telegram ?? { enabled: false, allowedUserIds: "" },
+        },
       },
       aiGatewayApiKey: secretRow?.aiGatewayApiKey,
+      telegramBotToken: secretRow?.telegramBotToken,
+      composioApiKey: secretRow?.composioApiKey,
       /** Reused on redeploy so the caller-facing secret stays stable. */
       webhookSecret: agent.webhookSecret,
       existing,

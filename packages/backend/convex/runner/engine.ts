@@ -187,6 +187,16 @@ async function partitionByKey(
     }
     const row = keyByRun.get(ref.runId);
     if (!row) {
+      // Channels whose inbound route can't surface a session id (Telegram's
+      // handler returns a bare ack) never get a key row. With the fallback
+      // enabled (deployments that run such channels on their own
+      // credentials), treat a missing row as deployment-owned. Web-chat BYOK
+      // sessions are unaffected: chat.ts persists the key row before the
+      // first job is enqueued.
+      if (process.env.RUNNER_SYSTEM_KEY_FALLBACK === "1") {
+        push(OWNER, job);
+        continue;
+      }
       if (Date.now() - job.createdAt > KEY_WAIT_MAX_MS) {
         await ctx.runMutation(internal.world.queue.runnerFail, {
           jobId: job.jobId,

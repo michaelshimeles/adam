@@ -206,6 +206,107 @@ export default defineSchema({
   }),
 
   /**
+   * Long-term memory: durable facts the agent saves about its user(s).
+   * Written by the agent's memory tools (service secret); read publicly by
+   * the dashboard. `permanent` marks stable traits that survive nightly
+   * consolidation; the rest is recent context.
+   */
+  memories: defineTable({
+    content: v.string(),
+    permanent: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_permanent", ["permanent", "updatedAt"])
+    .searchIndex("search_content", { searchField: "content" }),
+
+  /**
+   * Chat-created skills: named reusable procedures the agent saves for
+   * itself (create_skill / delete_skill). Inlined into the session
+   * instructions by the agent's dynamic instructions fragment.
+   */
+  agentSkills: defineTable({
+    name: v.string(),
+    description: v.string(),
+    markdown: v.string(),
+    updatedAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  /**
+   * Application-managed reminders/scheduled tasks (eve's dynamic-scheduling
+   * pattern): CRUD tools manage rows; a minute-level eve schedule claims due
+   * rows and runs one proactive session per reminder. One-off rows have
+   * cron = null and finish after firing; recurring rows advance nextFireAt
+   * from their cron expression (evaluated in `timezone` inside the bundle,
+   * which has cron-parser).
+   */
+  reminders: defineTable({
+    prompt: v.string(),
+    /** 5-field cron for recurring reminders; null = one-off. */
+    cron: v.union(v.string(), v.null()),
+    /** IANA timezone the cron is evaluated in. */
+    timezone: v.string(),
+    nextFireAt: v.number(),
+    /** Telegram chat to deliver into; null = deliver to the web inbox. */
+    chatId: v.union(v.string(), v.null()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("done"),
+      v.literal("cancelled"),
+    ),
+    /** Delivery lease: a crashed dispatch expires and the row retries. */
+    claimedUntil: v.optional(v.number()),
+    lastFiredAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_status_nextFireAt", ["status", "nextFireAt"]),
+
+  /**
+   * Agent-created event triggers: inbound webhook endpoints minted from chat
+   * (create_webhook). POSTs to /hooks/<hookId>/<secret> wake the agent with
+   * the stored prompt plus the event payload.
+   */
+  triggers: defineTable({
+    hookId: v.string(),
+    secret: v.string(),
+    name: v.string(),
+    prompt: v.string(),
+    /** Telegram chat to deliver into; null = deliver to the web inbox. */
+    chatId: v.union(v.string(), v.null()),
+    fireCount: v.number(),
+    lastFiredAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_hookId", ["hookId"]),
+
+  /**
+   * Receipt tracking: structured spending entries logged from receipt
+   * photos or chat. Money is integer cents; tools speak in dollars.
+   */
+  receipts: defineTable({
+    merchant: v.string(),
+    totalCents: v.number(),
+    currency: v.string(),
+    category: v.string(),
+    /** Purchase date, ISO "YYYY-MM-DD". */
+    purchasedAt: v.string(),
+    /** JSON array of line items, when legible. */
+    itemsJson: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    loggedAt: v.number(),
+  }).index("by_purchasedAt", ["purchasedAt"]),
+
+  /**
+   * Proactive-session inbox for the dashboard: one row per session the
+   * agent started on its own (fired reminder, webhook event). The web UI
+   * lists these and renders each transcript via ui:sessionEvents.
+   */
+  inbox: defineTable({
+    sessionId: v.string(),
+    title: v.string(),
+    kind: v.union(v.literal("reminder"), v.literal("webhook")),
+    createdAt: v.number(),
+  }).index("by_sessionId", ["sessionId"]),
+
+  /**
    * Versioned manifests of the compiled eve bundle, stored as files in
    * Convex file storage. This is how the agent runtime reaches deployments
    * whose node actions run off-machine (Convex Cloud): the runner downloads

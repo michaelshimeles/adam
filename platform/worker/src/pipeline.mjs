@@ -41,6 +41,46 @@ const DISABLE_TOOL_SOURCE = `import { disableTool } from "eve/tools";
 export default disableTool();
 `;
 
+/**
+ * Assistant capability groups: off → delete the listed template files. Each
+ * group's Convex tables stay in the deployment schema (harmlessly empty).
+ */
+const CAPABILITY_FILES = {
+  memory: [
+    "agent/tools/remember.ts",
+    "agent/tools/forget.ts",
+    "agent/tools/search_memory.ts",
+    "agent/tools/list_memories.ts",
+    "agent/instructions/30-memory.ts",
+    "agent/schedules/memory-consolidation.md",
+  ],
+  skills: [
+    "agent/tools/create_skill.ts",
+    "agent/tools/delete_skill.ts",
+    "agent/instructions/40-skills.ts",
+  ],
+  reminders: [
+    "agent/tools/create_reminder.ts",
+    "agent/tools/list_reminders.ts",
+    "agent/tools/cancel_reminder.ts",
+    "agent/schedules/reminders.ts",
+  ],
+  eventTriggers: [
+    "agent/tools/create_webhook.ts",
+    "agent/tools/list_webhooks.ts",
+    "agent/tools/delete_webhook.ts",
+    "agent/channels/hooks.ts",
+  ],
+  receipts: [
+    "agent/tools/log_receipt.ts",
+    "agent/tools/query_receipts.ts",
+    "agent/tools/spending_summary.ts",
+    "agent/tools/delete_receipt.ts",
+  ],
+  extras: ["agent/tools/get_weather.ts", "agent/tools/roll_dice.ts"],
+  delegation: ["agent/tools/workflow.ts"],
+};
+
 // Queue namespace is derived from the agent package name ("agent"), which the
 // workspace copy keeps — so it is identical for every deployed agent. Each
 // agent has its own deployment, so namespaces never collide across agents.
@@ -73,7 +113,7 @@ ${schedule.prompt.trim()}
 `;
 }
 
-function cronsTs(schedule) {
+function cronsTs(schedule, { reminders, memory }) {
   const heartbeat = schedule.enabled
     ? `
 // eve markdown schedule (agent/schedules/heartbeat.md) — the Convex cron
@@ -88,6 +128,32 @@ crons.cron(
     : `
 // No agent schedule configured for this deployment.
 `;
+
+  const remindersCron = reminders
+    ? `
+// eve reminders schedule (agent/schedules/reminders.ts) — every minute,
+// claims due reminders and delivers proactive sessions.
+crons.interval(
+  "eve reminders schedule",
+  { minutes: 1 },
+  internal.runner.schedule.reminders,
+  {},
+);
+`
+    : "";
+
+  const memoryCron = memory
+    ? `
+// eve memory-consolidation schedule (agent/schedules/memory-consolidation.md)
+// — nightly, matching its "15 8 * * *" cron.
+crons.daily(
+  "eve memory consolidation schedule",
+  { hourUTC: 8, minuteUTC: 15 },
+  internal.runner.schedule.memoryConsolidation,
+  {},
+);
+`
+    : "";
 
   return `import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
@@ -110,7 +176,7 @@ crons.interval(
   internal.world.queue.sweepDue,
   {},
 );
-${heartbeat}
+${heartbeat}${remindersCron}${memoryCron}
 // Keep the dead-letter set bounded.
 crons.daily(
   "cleanup dead queue jobs",
@@ -148,7 +214,8 @@ function parseEnvLocal(text) {
  * @param opts   { repoRoot, team, workRoot, log, setStep }
  */
 export async function deployAgent(input, opts) {
-  const { config, aiGatewayApiKey, existing } = input;
+  const { config, aiGatewayApiKey, telegramBotToken, composioApiKey, existing } =
+    input;
   const priorWebhookSecret = input.webhookSecret;
   const { repoRoot, team, workRoot, log } = opts;
   const setStep = opts.setStep ?? (() => {});
@@ -204,18 +271,48 @@ export async function deployAgent(input, opts) {
     }
   }
 
+  // Capability groups: off → delete the group's template files. (The
+  // telegram + proactive channel modules always stay: reminders and hooks
+  // import them, and both are inert without their env vars / callers.)
+  for (const [key, files] of Object.entries(CAPABILITY_FILES)) {
+    if (config.tools[key] === false) {
+      for (const file of files) {
+        await rm(join(agentDir, file), { force: true });
+      }
+      log(`capability disabled: ${key}`);
+    }
+  }
+
   const webhookEnabled = config.channels?.webhook?.enabled === true;
   if (!webhookEnabled) {
-    // The template ships agent/channels/webhook.ts; without it the bundle
-    // registers no webhook route and the Convex endpoint answers 404.
-    await rm(join(agentDir, "agent/channels"), { recursive: true, force: true });
+    // Without the module the bundle registers no webhook route and the
+    // Convex endpoint answers 404.
+    await rm(join(agentDir, "agent/channels/webhook.ts"), { force: true });
     log("webhook channel disabled");
   } else {
     log("webhook channel enabled");
   }
 
+  const telegramEnabled =
+    config.channels?.telegram?.enabled === true && Boolean(telegramBotToken);
+  log(
+    telegramEnabled
+      ? "telegram channel enabled"
+      : config.channels?.telegram?.enabled === true
+        ? "telegram channel requested but no bot token — disabled"
+        : "telegram channel disabled",
+  );
+
+  const composioEnabled = Boolean(composioApiKey);
+  if (!composioEnabled) {
+    await rm(join(agentDir, "agent/connections/composio.ts"), { force: true });
+    log("composio connection disabled (no API key)");
+  } else {
+    log("composio connection enabled");
+  }
+
   const schedulesDir = join(agentDir, "agent/schedules");
-  await rm(schedulesDir, { recursive: true, force: true });
+  await rm(join(schedulesDir, "heartbeat.md"), { force: true });
   if (config.schedule.enabled) {
     await mkdir(schedulesDir, { recursive: true });
     await writeFile(join(schedulesDir, "heartbeat.md"), heartbeatMd(config.schedule));
@@ -224,7 +321,13 @@ export async function deployAgent(input, opts) {
     log("schedule disabled");
   }
 
-  await writeFile(join(backendDir, "convex/crons.ts"), cronsTs(config.schedule));
+  await writeFile(
+    join(backendDir, "convex/crons.ts"),
+    cronsTs(config.schedule, {
+      reminders: config.tools.reminders !== false,
+      memory: config.tools.memory !== false,
+    }),
+  );
 
   // ---- build ---------------------------------------------------------------
   await setStep("build");
@@ -321,15 +424,31 @@ export async function deployAgent(input, opts) {
       `whsec_${randHex(16)}`)
     : undefined;
 
+  // Stable across redeploys, like the webhook secret.
+  const telegramWebhookSecretToken = telegramEnabled
+    ? (remoteEnv.get("TELEGRAM_WEBHOOK_SECRET_TOKEN") ?? `tgsec_${randHex(16)}`)
+    : undefined;
+
   const envSets = {
     WORLD_SERVICE_SECRET: worldSecret,
     WORLD_EXECUTION_MODE: "convex",
     WORLD_CONVEX_DISABLE_PUMP: "1",
     CONVEX_URL: deploymentUrl,
     WORKFLOW_QUEUE_NAMESPACE: QUEUE_NAMESPACE,
+    AGENT_DEFAULT_TIMEZONE: config.timezone ?? "UTC",
   };
   if (aiGatewayApiKey) envSets.AI_GATEWAY_API_KEY = aiGatewayApiKey;
   if (webhookSecret) envSets.WEBHOOK_CHANNEL_SECRET = webhookSecret;
+  if (composioEnabled) envSets.COMPOSIO_API_KEY = composioApiKey;
+  if (telegramEnabled) {
+    envSets.TELEGRAM_BOT_TOKEN = telegramBotToken;
+    envSets.TELEGRAM_WEBHOOK_SECRET_TOKEN = telegramWebhookSecretToken;
+    // Telegram's inbound route can't surface session ids, so those sessions
+    // run on the deployment credential via the runner's key fallback.
+    envSets.RUNNER_SYSTEM_KEY_FALLBACK = "1";
+    const allowed = (config.channels?.telegram?.allowedUserIds ?? "").trim();
+    if (allowed) envSets.TELEGRAM_ALLOWED_USER_IDS = allowed;
+  }
 
   for (const [name, value] of Object.entries(envSets)) {
     await run(convexBin, ["env", "set", name, value], {
@@ -339,11 +458,25 @@ export async function deployAgent(input, opts) {
       timeoutMs: 60_000,
     });
   }
-  if (!webhookEnabled && remoteEnv.has("WEBHOOK_CHANNEL_SECRET")) {
-    await run(convexBin, ["env", "remove", "WEBHOOK_CHANNEL_SECRET"], {
+  const envRemovals = [];
+  if (!webhookEnabled) envRemovals.push("WEBHOOK_CHANNEL_SECRET");
+  if (!composioEnabled) envRemovals.push("COMPOSIO_API_KEY");
+  if (!telegramEnabled) {
+    envRemovals.push(
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_WEBHOOK_SECRET_TOKEN",
+      "TELEGRAM_ALLOWED_USER_IDS",
+      "RUNNER_SYSTEM_KEY_FALLBACK",
+    );
+  } else if (!(config.channels?.telegram?.allowedUserIds ?? "").trim()) {
+    envRemovals.push("TELEGRAM_ALLOWED_USER_IDS");
+  }
+  for (const name of envRemovals) {
+    if (!remoteEnv.has(name)) continue;
+    await run(convexBin, ["env", "remove", name], {
       cwd: backendDir,
       log,
-      label: "env remove WEBHOOK_CHANNEL_SECRET",
+      label: `env remove ${name}`,
       timeoutMs: 60_000,
     });
   }
@@ -352,10 +485,33 @@ export async function deployAgent(input, opts) {
       ? "deployment credential set (AI_GATEWAY_API_KEY)"
       : "no deployment credential — agent is BYOK-only (visitors bring a key)",
   );
-  if (webhookEnabled && !aiGatewayApiKey) {
+  if ((webhookEnabled || telegramEnabled) && !aiGatewayApiKey) {
     log(
-      "warning: webhook channel is enabled but no AI Gateway key is configured — webhook turns will fail until one is added",
+      "warning: webhook/telegram channels are enabled but no AI Gateway key is configured — their turns will fail until one is added",
     );
+  }
+
+  // Register the deployment's Telegram webhook (or drop a stale one).
+  if (telegramEnabled) {
+    const tgRes = await fetch(
+      `https://api.telegram.org/bot${telegramBotToken}/setWebhook`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: `${siteUrl}/channels/telegram`,
+          secret_token: telegramWebhookSecretToken,
+          allowed_updates: ["message", "callback_query"],
+        }),
+      },
+    );
+    const tgJson = await tgRes.json().catch(() => ({}));
+    if (tgJson.ok !== true) {
+      throw new Error(
+        `Telegram setWebhook failed: ${JSON.stringify(tgJson).slice(0, 300)}`,
+      );
+    }
+    log(`telegram webhook registered → ${siteUrl}/channels/telegram`);
   }
 
   // ---- bundle --------------------------------------------------------------
@@ -456,6 +612,9 @@ const TEARDOWN_ENV_VARS = [
   "AI_GATEWAY_API_KEY",
   "VERCEL_OIDC_TOKEN",
   "WEBHOOK_CHANNEL_SECRET",
+  "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_WEBHOOK_SECRET_TOKEN",
+  "COMPOSIO_API_KEY",
 ];
 
 /**

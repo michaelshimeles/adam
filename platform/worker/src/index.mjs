@@ -132,6 +132,8 @@ for (;;) {
       {
         config: job.config,
         aiGatewayApiKey: job.aiGatewayApiKey,
+        telegramBotToken: job.telegramBotToken,
+        composioApiKey: job.composioApiKey,
         webhookSecret: job.webhookSecret,
         existing: job.existing,
       },
