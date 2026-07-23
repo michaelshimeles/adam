@@ -68,8 +68,11 @@ export function telegramChatId(
 
 /** Public URL of a minted webhook endpoint on this deployment. */
 export function triggerUrl(hook: { hookId: string; secret: string }): string {
-  const convexUrl = process.env.CONVEX_URL ?? "";
-  // Convex HTTP routes live on .convex.site (queries/mutations on .convex.cloud).
-  const base = convexUrl.replace(".convex.cloud", ".convex.site");
+  // Convex HTTP routes live on the site URL (.convex.site in the cloud,
+  // port 3211 on a local anonymous deployment) rather than the API URL.
+  const siteUrl = process.env.CONVEX_SITE_URL;
+  const base =
+    siteUrl ??
+    (process.env.CONVEX_URL ?? "").replace(".convex.cloud", ".convex.site");
   return `${base}/hooks/${hook.hookId}/${hook.secret}`;
 }
