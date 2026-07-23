@@ -39,9 +39,10 @@
         if (cancelled) return;
         models = result.models;
         // A saved model missing from the new catalog would fail every turn;
-        // fall back to the agent's configured default instead.
+        // fall back to the agent's configured default instead. This applies
+        // to an empty catalog too — carrying a previous provider's selection
+        // past a key swap would send an id the new provider rejects.
         if (
-          result.models.length > 0 &&
           !result.models.some((option) => option.id === webModel.selected) &&
           webModel.selected !== DEFAULT_MODEL_ID
         ) {

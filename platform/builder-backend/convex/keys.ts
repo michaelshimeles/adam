@@ -43,16 +43,23 @@ export const validate = action({
             : `The AI Gateway returned ${response.status}.`,
       };
     }
+    // A real credits response is a JSON object carrying a balance; anything
+    // else (an HTML error page, an intercepting proxy, a JSON error body)
+    // must not mark the key valid.
+    let payload: unknown;
     try {
-      const json = (await response.json()) as { balance?: unknown };
-      return {
-        ok: true,
-        balance: typeof json.balance === "string" ? json.balance : undefined,
-      };
+      payload = await response.json();
     } catch {
-      // A real gateway 200 is always JSON; anything else (an intercepting
-      // proxy, an HTML error page) must not mark the key valid.
       return { ok: false, error: "The AI Gateway returned an invalid response." };
     }
+    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+      return { ok: false, error: "The AI Gateway returned an unexpected response." };
+    }
+    const balance = (payload as Record<string, unknown>).balance;
+    if (typeof balance === "string") return { ok: true, balance };
+    if (typeof balance === "number" && Number.isFinite(balance)) {
+      return { ok: true, balance: String(balance) };
+    }
+    return { ok: false, error: "The AI Gateway returned an unexpected response." };
   },
 });
