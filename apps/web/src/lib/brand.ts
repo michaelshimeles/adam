@@ -1,9 +1,9 @@
 /**
  * Deployment branding. The agent-builder pipeline builds this app once per
  * deployed agent with VITE_AGENT_* set, turning the repo dashboard into that
- * agent's own app (agent name in the chrome, landing page skipped, webhook
- * card shown when the channel is on). Unset — the repo's own dev/demo build —
- * everything falls back to the adam brand.
+ * agent's own app (agent name in the chrome, webhook card shown when the
+ * channel is on). Unset — the repo's own dev/demo build — falls back to the
+ * adam brand. Marketing lives in platform/builder-web (`/` + `/builder`).
  */
 
 const env = import.meta.env as Record<string, string | undefined>;
