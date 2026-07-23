@@ -13,6 +13,7 @@
 //     "schedule": { "enabled": false, "cron": "0 * * * *", "prompt": "…" },
 //     "channels": { "webhook": { "enabled": false } },
 //     "aiGatewayApiKey": "(optional)",
+//     "convexDeployKey": "(optional — deploy into the key's own deployment)",
 //     "webhookSecret": "(optional — kept stable on redeploy)",
 //     "existing": { "projectSlug": "…", "deploymentName": "…", "deploymentUrl": "…" } (optional, redeploy)
 //   }
@@ -70,6 +71,7 @@ const input = {
   aiGatewayApiKey: raw.aiGatewayApiKey,
   telegramBotToken: raw.telegramBotToken,
   composioApiKey: raw.composioApiKey,
+  convexDeployKey: raw.convexDeployKey,
   webhookSecret: raw.webhookSecret,
   existing: raw.existing,
 };

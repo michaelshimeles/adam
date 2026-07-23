@@ -52,6 +52,7 @@ export interface AgentSummary {
   hasGatewayKey: boolean;
   hasTelegramToken?: boolean;
   hasComposioKey?: boolean;
+  hasConvexDeployKey?: boolean;
   /** Optional on rows created before the timezone field existed. */
   timezone?: string;
   projectSlug?: string;
@@ -125,6 +126,7 @@ export const agentsApi = {
         aiGatewayApiKey?: string;
         telegramBotToken?: string;
         composioApiKey?: string;
+        convexDeployKey?: string;
       },
     string
   >("agents:create"),
@@ -136,6 +138,7 @@ export const agentsApi = {
         aiGatewayApiKey?: string;
         telegramBotToken?: string;
         composioApiKey?: string;
+        convexDeployKey?: string;
       },
     null
   >("agents:update"),

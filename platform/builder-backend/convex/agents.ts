@@ -33,6 +33,7 @@ const agentSummary = v.object({
   hasGatewayKey: v.boolean(),
   hasTelegramToken: v.optional(v.boolean()),
   hasComposioKey: v.optional(v.boolean()),
+  hasConvexDeployKey: v.optional(v.boolean()),
   projectSlug: v.optional(v.string()),
   deploymentName: v.optional(v.string()),
   deploymentUrl: v.optional(v.string()),
@@ -116,6 +117,19 @@ function validateConfig(args: {
   }
 }
 
+/**
+ * A bring-your-own-Convex key must be a deployment deploy key
+ * ("prod:<deployment-name>|…" from the project's Settings → Deploy key) —
+ * the pipeline derives the target deployment from its prefix.
+ */
+function validateConvexDeployKey(key: string): void {
+  if (!/^(prod|dev):[a-z0-9-]+\|/.test(key)) {
+    throw new Error(
+      "Convex deploy key must be a deployment deploy key (starts with \"prod:<deployment-name>|\") — generate one under your Convex project's Settings → Deploy key",
+    );
+  }
+}
+
 export const list = query({
   args: { ...dashboardAuthArgs },
   returns: v.array(agentSummary),
@@ -143,6 +157,7 @@ export const create = mutation({
     aiGatewayApiKey: v.optional(v.string()),
     telegramBotToken: v.optional(v.string()),
     composioApiKey: v.optional(v.string()),
+    convexDeployKey: v.optional(v.string()),
   },
   returns: v.id("agents"),
   handler: async (ctx, args) => {
@@ -152,6 +167,8 @@ export const create = mutation({
     const key = args.aiGatewayApiKey?.trim();
     const telegramToken = args.telegramBotToken?.trim();
     const composioKey = args.composioApiKey?.trim();
+    const deployKey = args.convexDeployKey?.trim();
+    if (deployKey) validateConvexDeployKey(deployKey);
     const agentId = await ctx.db.insert("agents", {
       name: args.name.trim(),
       slug: slugify(args.name),
@@ -165,6 +182,7 @@ export const create = mutation({
       hasGatewayKey: Boolean(key),
       hasTelegramToken: Boolean(telegramToken),
       hasComposioKey: Boolean(composioKey),
+      hasConvexDeployKey: Boolean(deployKey),
       createdAt: now,
       updatedAt: now,
     });
@@ -173,6 +191,7 @@ export const create = mutation({
       aiGatewayApiKey: key || undefined,
       telegramBotToken: telegramToken || undefined,
       composioApiKey: composioKey || undefined,
+      convexDeployKey: deployKey || undefined,
       updatedAt: now,
     });
     return agentId;
@@ -190,6 +209,8 @@ export const update = mutation({
     telegramBotToken: v.optional(v.string()),
     /** Same omit/replace/clear semantics as aiGatewayApiKey. */
     composioApiKey: v.optional(v.string()),
+    /** Same omit/replace/clear semantics as aiGatewayApiKey. */
+    convexDeployKey: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -208,6 +229,7 @@ export const update = mutation({
     let hasGatewayKey = agent.hasGatewayKey;
     let hasTelegramToken = agent.hasTelegramToken ?? false;
     let hasComposioKey = agent.hasComposioKey ?? false;
+    let hasConvexDeployKey = agent.hasConvexDeployKey ?? false;
     const secretPatch: Record<string, string | number | undefined> = {};
     if (args.aiGatewayApiKey !== undefined) {
       const key = args.aiGatewayApiKey.trim();
@@ -223,6 +245,22 @@ export const update = mutation({
       const key = args.composioApiKey.trim();
       secretPatch.composioApiKey = key || undefined;
       hasComposioKey = Boolean(key);
+    }
+    if (args.convexDeployKey !== undefined) {
+      const key = args.convexDeployKey.trim();
+      if (key) validateConvexDeployKey(key);
+      // Once deployed, the agent lives in the key's deployment — adding or
+      // removing the key would strand it. Require a fresh agent instead.
+      if (
+        agent.deploymentName &&
+        Boolean(key) !== (agent.hasConvexDeployKey ?? false)
+      ) {
+        throw new Error(
+          "This agent is already deployed — the Convex deploy key can't be added or removed after the first deploy. Create a new agent instead.",
+        );
+      }
+      secretPatch.convexDeployKey = key || undefined;
+      hasConvexDeployKey = Boolean(key);
     }
     if (Object.keys(secretPatch).length > 0) {
       const secret = await ctx.db
@@ -251,6 +289,7 @@ export const update = mutation({
       hasGatewayKey,
       hasTelegramToken,
       hasComposioKey,
+      hasConvexDeployKey,
       updatedAt: now,
     });
     return null;
@@ -336,12 +375,25 @@ export const remove = mutation({
       );
     }
 
-    // Revoke stored credentials immediately on either path.
+    // Revoke stored credentials immediately on either path. The Convex
+    // deploy key is kept until teardown finishes — the worker needs it to
+    // scrub a bring-your-own-Convex deployment (purgeAgentRows removes it).
     const secret = await ctx.db
       .query("agentSecrets")
       .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
       .unique();
-    if (secret) await ctx.db.delete(secret._id);
+    if (secret) {
+      if (agent.deploymentName && secret.convexDeployKey) {
+        await ctx.db.patch(secret._id, {
+          aiGatewayApiKey: undefined,
+          telegramBotToken: undefined,
+          composioApiKey: undefined,
+          updatedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.delete(secret._id);
+      }
+    }
 
     if (!agent.deploymentName) {
       // Never provisioned — nothing to tear down remotely.

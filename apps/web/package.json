@@ -12,7 +12,9 @@
     "@vercel/analytics": "^2.0.1",
     "convex": "^1.42.1",
     "convex-svelte": "^0.14.0",
+    "dompurify": "^3.4.12",
     "eve": "0.22.0",
+    "marked": "^16.4.2",
     "ui": "workspace:*"
   },
   "devDependencies": {

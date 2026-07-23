@@ -4,13 +4,12 @@
     EveMessage,
     EveMessageInputRequest,
   } from "eve/client";
-  import { createChatSession } from "../chat.svelte";
+  import type { createChatSession } from "../chat.svelte";
+  import { AGENT_MODEL, BRAND_NAME } from "../brand";
   import { Button } from "ui/components/button";
-  import { Textarea } from "ui/components/textarea";
+  import Markdown from "./Markdown.svelte";
 
-  // Convex-native chat: sends go through the chat:send action and the
-  // transcript is a reactive Convex query over the session's event stream.
-  const agent = createChatSession();
+  let { agent }: { agent: ReturnType<typeof createChatSession> } = $props();
 
   let draft = $state("");
   let hitlText = $state<Record<string, string>>({});
@@ -29,10 +28,10 @@
   }
 
   const suggestions = [
-    "Save a note: eve is running on Convex end to end",
-    "What's on the notepad right now?",
-    "How healthy is the workflow queue?",
-    "Clear the notepad",
+    "What can you do?",
+    "Remember that I prefer short answers",
+    "Remind me to stretch in 20 minutes",
+    "What have I spent this month?",
   ];
 
   async function submit(text?: string) {
@@ -82,175 +81,99 @@
     );
   }
 
-  function compactJson(value: unknown): string {
+  function prettyJson(value: unknown): string {
     if (value === undefined) return "";
     try {
-      const text = JSON.stringify(value);
+      const text = JSON.stringify(value, null, 2);
       if (text === undefined) return "";
-      return text.length > 220 ? `${text.slice(0, 220)}…` : text;
+      return text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
     } catch {
       return String(value);
     }
   }
 
-  function roleLabel(message: EveMessage): string {
-    return message.role === "user" ? "you" : "agent";
+  function userText(message: EveMessage): string {
+    return message.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n\n");
   }
 </script>
 
-<section
-  data-chat
-  class="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-background"
->
-  <header class="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b px-4">
-    <h2 class="m-0 font-mono text-[11px] font-semibold tracking-[0.08em] text-foreground uppercase">
-      Agent Session
-    </h2>
-    <div class="flex min-w-0 items-center gap-3 font-mono text-[11px] text-gray-600">
-      {#if agent.sessionId}
-        <span class="hidden truncate md:inline">{agent.sessionId.slice(0, 16)}…</span>
-      {/if}
-      <span
-        class="inline-flex shrink-0 items-center gap-1.5 {agent.status === 'streaming'
-          ? 'text-green-900'
-          : agent.status === 'submitted'
-            ? 'text-amber-900'
-            : agent.status === 'error'
-              ? 'text-red-900'
-              : ''}"
-      >
-        {#if busy}
-          <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
-        {/if}
-        {agent.status}
-      </span>
-    </div>
-  </header>
-
+<section data-chat class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
   <div
-    class="flex min-h-0 flex-1 scroll-smooth flex-col gap-4 overflow-y-auto p-3.5 md:gap-5 md:p-5"
+    class="flex min-h-0 flex-1 scroll-smooth flex-col overflow-y-auto"
     {@attach followTail}
   >
-    {#if messages.length === 0}
-      <div class="m-auto flex w-full max-w-md flex-col items-center gap-2.5 py-10 text-center">
-        <p class="m-0 font-mono text-[11px] font-medium tracking-[0.12em] text-gray-600 uppercase">
-          every turn is a workflow run
-        </p>
-        <h2 class="m-0 text-xl leading-[26px] font-semibold tracking-[-0.4px] text-gray-1000">
-          Talk to your durable agent
-        </h2>
-        <p class="m-0 text-sm leading-5 text-muted-foreground">
-          Steps, retries, human-in-the-loop approvals, and token streams all
-          land in the panels on the right — live from Convex.
-        </p>
-        <div class="mt-3 flex w-full max-w-sm flex-col gap-1.5">
-          {#each suggestions as suggestion (suggestion)}
-            <button
-              class="cursor-pointer rounded-md border bg-transparent px-3.5 py-2 text-left text-[13px] text-muted-foreground transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100 hover:text-foreground"
-              onclick={() => submit(suggestion)}
-            >
-              <span class="mr-2 font-mono text-gray-600" aria-hidden="true">→</span>{suggestion}
-            </button>
-          {/each}
-        </div>
-      </div>
-    {:else}
-      {#each messages as message (message.id)}
-        <article
-          class="flex max-w-[86%] flex-col gap-1.5 {message.role === 'user'
-            ? 'items-end self-end'
-            : 'items-start self-start'}"
-        >
-          <div
-            class="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.1em] text-gray-600 uppercase"
-          >
-            {roleLabel(message)}
-            {#if message.metadata?.status === "streaming"}
-              <span class="size-1.5 animate-pulse rounded-full bg-green-900"></span>
-            {/if}
+    <div class="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 md:px-6">
+      {#if messages.length === 0}
+        <div class="m-auto flex w-full max-w-md flex-col items-center gap-2.5 py-16 text-center">
+          <h2 class="m-0 text-xl leading-[26px] font-semibold tracking-[-0.4px] text-gray-1000">
+            {BRAND_NAME}
+          </h2>
+          <p class="m-0 text-sm leading-5 text-muted-foreground">
+            Your durable personal assistant. Memory, reminders, webhooks and
+            skills — everything persists.
+          </p>
+          <div class="mt-3 flex w-full max-w-sm flex-col gap-1.5">
+            {#each suggestions as suggestion (suggestion)}
+              <button
+                class="cursor-pointer rounded-md border bg-transparent px-3.5 py-2 text-left text-[13px] text-muted-foreground transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100 hover:text-foreground"
+                onclick={() => submit(suggestion)}
+              >
+                <span class="mr-2 font-mono text-gray-600" aria-hidden="true">→</span>{suggestion}
+              </button>
+            {/each}
           </div>
-          <div
-            class="flex w-full min-w-0 flex-col gap-2 {message.role === 'user'
-              ? 'items-end'
-              : ''}"
-          >
-            {#each message.parts as part, i (i)}
-              {#if part.type === "text"}
-                <p
-                  class="m-0 w-fit max-w-full rounded-md px-3.5 py-2.5 text-sm leading-5 break-words whitespace-pre-wrap {message.role ===
-                  'user'
-                    ? 'rounded-tr-sm bg-primary text-primary-foreground'
-                    : 'rounded-tl-sm border bg-gray-100 text-foreground'}"
-                >
-                  {part.text}
-                </p>
-              {:else if part.type === "reasoning"}
-                {#if part.text.trim().length > 0}
-                  <details class="border-l-2 border-border pl-2.5 text-xs text-gray-600">
-                    <summary
-                      class="cursor-pointer text-[10px] font-semibold tracking-[0.08em] uppercase"
-                    >
-                      reasoning
-                    </summary>
-                    <p class="mt-1.5 mb-0 whitespace-pre-wrap">{part.text}</p>
-                  </details>
-                {/if}
-              {:else if part.type === "dynamic-tool"}
-                <div
-                  class="flex w-full max-w-[460px] flex-col gap-1.5 rounded-md border bg-gray-100 px-3 py-2.5 {part.state ===
-                  'approval-requested'
-                    ? 'border-alpha-600'
-                    : ''}"
-                >
-                  <div class="flex items-center justify-between gap-2.5">
-                    <span
-                      class="font-mono text-xs font-semibold tracking-[0.06em] text-gray-1000 uppercase"
-                    >
-                      {part.toolName}
-                    </span>
-                    <span
-                      class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase"
-                    >
-                      {part.state.replace(/-/g, " ")}
-                    </span>
-                  </div>
-                  {#if part.input !== undefined && compactJson(part.input)}
-                    <code
-                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-muted-foreground"
-                    >
-                      {compactJson(part.input)}
-                    </code>
+        </div>
+      {:else}
+        {#each messages as message (message.id)}
+          {#if message.role === "user"}
+            <div class="flex justify-end">
+              <p
+                class="m-0 max-w-[80%] rounded-2xl rounded-br-md bg-gray-200 px-4 py-2.5 text-sm leading-6 break-words whitespace-pre-wrap text-foreground"
+              >
+                {userText(message)}
+              </p>
+            </div>
+          {:else}
+            <div class="flex flex-col gap-2">
+              {#each message.parts as part, i (i)}
+                {#if part.type === "text"}
+                  {#if part.text.trim().length > 0}
+                    <Markdown text={part.text} />
                   {/if}
-                  {#if part.state === "output-available" && compactJson(part.output)}
-                    <code
-                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-green-900"
-                    >
-                      {compactJson(part.output)}
-                    </code>
+                {:else if part.type === "reasoning"}
+                  {#if part.text.trim().length > 0}
+                    <details class="border-l-2 border-border pl-2.5 text-xs text-gray-600">
+                      <summary
+                        class="cursor-pointer text-[10px] font-semibold tracking-[0.08em] uppercase"
+                      >
+                        reasoning
+                      </summary>
+                      <p class="mt-1.5 mb-0 whitespace-pre-wrap">{part.text}</p>
+                    </details>
                   {/if}
-                  {#if part.state === "output-error"}
-                    <code
-                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-red-900"
-                    >
-                      {part.errorText}
-                    </code>
-                  {/if}
-                  {#if part.state === "output-denied"}
-                    <code
-                      class="rounded-sm border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-red-900"
-                    >
-                      denied by user
-                    </code>
-                  {/if}
-
+                {:else if part.type === "dynamic-tool"}
                   {#if part.state === "approval-requested"}
                     {@const request = inputRequestOf(part)}
                     {@const requestId = requestIdOf(part)}
-                    {#if requestId}
-                      <div class="flex flex-col gap-2 border-t border-dashed pt-2">
+                    <div
+                      class="flex w-full max-w-[520px] flex-col gap-2 rounded-xl border border-alpha-600 bg-gray-100 px-4 py-3"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-xs font-semibold text-gray-1000">
+                          {part.toolName}
+                        </span>
+                        <span
+                          class="text-[10px] font-semibold tracking-[0.07em] text-amber-900 uppercase"
+                        >
+                          needs approval
+                        </span>
+                      </div>
+                      {#if requestId}
                         <p class="m-0 text-sm text-foreground">
-                          {request?.prompt ??
-                            `Allow the agent to run ${part.toolName}?`}
+                          {request?.prompt ?? `Allow the agent to run ${part.toolName}?`}
                         </p>
                         <div class="flex flex-wrap gap-1.5">
                           {#if request?.options && request.options.length > 0}
@@ -310,79 +233,149 @@
                             </Button>
                           </form>
                         {/if}
-                      </div>
-                    {/if}
-                  {/if}
-                </div>
-              {:else if part.type === "authorization"}
-                <div
-                  class="flex w-full max-w-[460px] flex-col gap-1.5 rounded-md border bg-gray-100 px-3 py-2.5"
-                >
-                  <div class="flex items-center justify-between gap-2.5">
-                    <span
-                      class="font-mono text-xs font-semibold tracking-[0.06em] text-gray-1000 uppercase"
-                    >
-                      {part.displayName}
-                    </span>
-                    <span
-                      class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase"
-                    >
-                      {part.state}
-                    </span>
-                  </div>
-                  {#if part.state === "required" && part.authorization?.url}
-                    <a
-                      class="text-xs text-blue-900 underline-offset-4 hover:underline"
-                      href={part.authorization.url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Authorize {part.displayName}
-                      {#if part.authorization.userCode}
-                        · code <code class="font-mono">{part.authorization.userCode}</code>
                       {/if}
-                    </a>
+                    </div>
+                  {:else}
+                    <details class="group w-fit max-w-full">
+                      <summary
+                        class="flex w-fit cursor-pointer items-center gap-2 rounded-full border bg-gray-100 py-1 pr-3 pl-2.5 text-xs text-gray-600 transition-colors duration-150 hover:border-alpha-500 hover:text-foreground"
+                      >
+                        <span aria-hidden="true">⚙</span>
+                        <span class="font-mono">{part.toolName}</span>
+                        <span
+                          class="text-[10px] tracking-[0.05em] uppercase {part.state ===
+                          'output-error'
+                            ? 'text-red-900'
+                            : part.state === 'output-available'
+                              ? 'text-green-900'
+                              : ''}"
+                        >
+                          {part.state === "output-available"
+                            ? "done"
+                            : part.state.replace(/-/g, " ")}
+                        </span>
+                      </summary>
+                      <div
+                        class="mt-1.5 flex max-w-[520px] flex-col gap-1.5 rounded-xl border bg-gray-100 px-3 py-2.5"
+                      >
+                        {#if part.input !== undefined && prettyJson(part.input)}
+                          <span class="text-[10px] font-medium tracking-wide text-gray-600 uppercase">
+                            input
+                          </span>
+                          <pre
+                            class="m-0 max-h-48 overflow-auto rounded-md border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-muted-foreground">{prettyJson(
+                              part.input,
+                            )}</pre>
+                        {/if}
+                        {#if part.state === "output-available" && prettyJson(part.output)}
+                          <span class="text-[10px] font-medium tracking-wide text-gray-600 uppercase">
+                            output
+                          </span>
+                          <pre
+                            class="m-0 max-h-48 overflow-auto rounded-md border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-green-900">{prettyJson(
+                              part.output,
+                            )}</pre>
+                        {/if}
+                        {#if part.state === "output-error"}
+                          <pre
+                            class="m-0 max-h-48 overflow-auto rounded-md border bg-gray-200 px-2 py-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-red-900">{part.errorText}</pre>
+                        {/if}
+                        {#if part.state === "output-denied"}
+                          <pre
+                            class="m-0 rounded-md border bg-gray-200 px-2 py-1.5 font-mono text-[11px] text-red-900">denied by user</pre>
+                        {/if}
+                      </div>
+                    </details>
                   {/if}
-                </div>
+                {:else if part.type === "authorization"}
+                  <div
+                    class="flex w-full max-w-[520px] flex-col gap-1.5 rounded-xl border bg-gray-100 px-4 py-3"
+                  >
+                    <div class="flex items-center justify-between gap-2.5">
+                      <span class="font-mono text-xs font-semibold text-gray-1000">
+                        {part.displayName}
+                      </span>
+                      <span class="text-[10px] font-semibold tracking-[0.07em] text-gray-600 uppercase">
+                        {part.state}
+                      </span>
+                    </div>
+                    {#if part.state === "required" && part.authorization?.url}
+                      <a
+                        class="text-xs text-blue-900 underline-offset-4 hover:underline"
+                        href={part.authorization.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Authorize {part.displayName}
+                        {#if part.authorization.userCode}
+                          · code <code class="font-mono">{part.authorization.userCode}</code>
+                        {/if}
+                      </a>
+                    {/if}
+                  </div>
+                {/if}
+              {/each}
+              {#if message.metadata?.status === "streaming"}
+                <span class="size-1.5 animate-pulse rounded-full bg-green-900"></span>
               {/if}
-            {/each}
-          </div>
-        </article>
-      {/each}
-    {/if}
+            </div>
+          {/if}
+        {/each}
+      {/if}
+    </div>
   </div>
 
   {#if agent.error}
-    <div
-      class="mx-3.5 flex items-center justify-between gap-3 rounded-md border border-red-400 bg-red-100 px-3 py-2 text-xs text-red-900 md:mx-4"
-    >
-      <span class="min-w-0 break-words">{agent.error}</span>
-      <Button
-        variant="outline"
-        size="sm"
-        class="shrink-0 border-red-400 text-red-900 hover:bg-red-200"
-        onclick={() => agent.reset()}
+    <div class="mx-auto w-full max-w-3xl px-4 md:px-6">
+      <div
+        class="flex items-center justify-between gap-3 rounded-md border border-red-400 bg-red-100 px-3 py-2 text-xs text-red-900"
       >
-        New Session
-      </Button>
+        <span class="min-w-0 break-words">{agent.error}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="shrink-0 border-red-400 text-red-900 hover:bg-red-200"
+          onclick={() => agent.reset()}
+        >
+          New Session
+        </Button>
+      </div>
     </div>
   {/if}
 
-  <footer class="flex items-end gap-2.5 border-t p-3 md:px-4 md:pt-3.5 md:pb-3.5">
-    <Textarea
-      class="max-h-36 min-h-10 flex-1 text-sm md:text-sm"
-      placeholder={busy ? "Agent is working…" : "Message the agent…"}
-      bind:value={draft}
-      onkeydown={onComposerKeydown}
-      rows={1}
-    />
-    <div class="flex gap-2">
-      {#if !busy && messages.length > 0}
-        <Button variant="ghost" onclick={() => agent.reset()}>New Chat</Button>
-      {/if}
-      <Button disabled={busy || draft.trim().length === 0} onclick={() => submit()}>
-        Send
-      </Button>
+  <footer class="shrink-0 px-4 pt-2 pb-4 md:px-6">
+    <div
+      class="mx-auto flex w-full max-w-3xl flex-col gap-1.5 rounded-xl border bg-gray-100/60 px-3 pt-2.5 pb-2 transition-colors duration-150 focus-within:border-alpha-600"
+    >
+      <textarea
+        class="max-h-40 min-h-[44px] w-full resize-none border-0 bg-transparent px-1 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+        placeholder={busy ? "Agent is working…" : `Message ${BRAND_NAME}…`}
+        bind:value={draft}
+        onkeydown={onComposerKeydown}
+        rows={1}
+      ></textarea>
+      <div class="flex items-center justify-between gap-2">
+        <span class="pl-1 font-mono text-[11px] text-gray-600">
+          {AGENT_MODEL ?? "anthropic/claude-sonnet-5"}
+        </span>
+        <div class="flex items-center gap-2">
+          <span
+            class="font-mono text-[11px] {busy ? 'text-amber-900' : 'text-gray-600'}"
+          >
+            {#if busy}<span class="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-current"></span>{/if}
+            {agent.status}
+          </span>
+          <button
+            class="flex size-8 cursor-pointer items-center justify-center rounded-full border-0 bg-primary text-primary-foreground transition-opacity disabled:cursor-default disabled:opacity-40"
+            title="Send"
+            aria-label="Send message"
+            disabled={busy || draft.trim().length === 0}
+            onclick={() => submit()}
+          >
+            ↑
+          </button>
+        </div>
+      </div>
     </div>
   </footer>
 </section>
