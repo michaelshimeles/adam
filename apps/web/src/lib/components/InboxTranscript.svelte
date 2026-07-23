@@ -5,7 +5,7 @@
     type EveMessage,
     type HandleMessageStreamEvent,
   } from "eve/client";
-  import { chatApi, type SessionEventsPage } from "../api";
+  import { chatApi, parseSessionEvents, type SessionEventsPage } from "../api";
   import Markdown from "./Markdown.svelte";
 
   /**
@@ -38,7 +38,7 @@
       chatApi.sessionEvents,
       { sessionId: id },
       (page: SessionEventsPage | null) => {
-        if (page) events = page.events as HandleMessageStreamEvent[];
+        if (page) events = parseSessionEvents(page) as HandleMessageStreamEvent[];
       },
       (err) => {
         error = err.message;

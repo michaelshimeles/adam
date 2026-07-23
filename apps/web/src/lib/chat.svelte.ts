@@ -8,7 +8,7 @@ import {
   type InputResponse,
 } from "eve/client";
 import { onDestroy } from "svelte";
-import { chatApi, type SessionEventsPage } from "./api";
+import { chatApi, parseSessionEvents, type SessionEventsPage } from "./api";
 import { modelKey } from "./apiKey.svelte";
 
 /**
@@ -135,7 +135,7 @@ export function createChatSession(options?: {
 
   function handlePage(page: SessionEventsPage | null): void {
     if (!page) return;
-    const events = page.events as HandleMessageStreamEvent[];
+    const events = parseSessionEvents(page) as HandleMessageStreamEvent[];
     serverEvents = events;
     // Drop optimistic messages the server has confirmed.
     if (pending.length > 0) {

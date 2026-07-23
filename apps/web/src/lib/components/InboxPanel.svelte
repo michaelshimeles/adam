@@ -5,7 +5,7 @@
     type EveMessage,
     type HandleMessageStreamEvent,
   } from "eve/client";
-  import { api, chatApi, type SessionEventsPage } from "../api";
+  import { api, chatApi, parseSessionEvents, type SessionEventsPage } from "../api";
   import { timeAgo } from "../format";
   import { getNow } from "../now.svelte";
 
@@ -44,7 +44,7 @@
       chatApi.sessionEvents,
       { sessionId },
       (page: SessionEventsPage | null) => {
-        if (page) events = page.events as HandleMessageStreamEvent[];
+        if (page) events = parseSessionEvents(page) as HandleMessageStreamEvent[];
       },
       (err) => {
         transcriptError = err.message;

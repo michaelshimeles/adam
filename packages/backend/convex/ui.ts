@@ -199,15 +199,21 @@ export const streamText = query({
 });
 
 /**
- * Decode one workflow stream frame into a session event object.
+ * Decode one workflow stream frame into a session event JSON line.
  *
  * Session event streams are written by eve as serde-framed devalue payloads:
  *   [4-byte BE payload length][4-byte format magic "devl"][devalue JSON]
  * where the devalue value is a Uint8Array holding one NDJSON-encoded
  * HandleMessageStreamEvent line. Decoding server-side keeps the client free
  * of binary handling and the devalue dependency.
+ *
+ * The event is returned as its JSON string, not a structured object: tool
+ * payloads inside events carry arbitrary JSON (Composio's connection_search
+ * returns JSON Schemas full of "$schema"/"$ref" keys), and field names like
+ * those are reserved in Convex values — returning them structured throws.
+ * The client JSON.parses each line instead.
  */
-function decodeSessionEventFrame(buf: ArrayBuffer): unknown {
+function decodeSessionEventFrame(buf: ArrayBuffer): string | null {
   const bytes = new Uint8Array(buf);
   if (bytes.length < 8) return null;
   const magic = String.fromCharCode(
@@ -231,16 +237,20 @@ function decodeSessionEventFrame(buf: ArrayBuffer): unknown {
     const bin = atob(b64);
     const raw = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
-    return JSON.parse(new TextDecoder().decode(raw)) as unknown;
+    const text = new TextDecoder().decode(raw);
+    JSON.parse(text); // malformed frames are dropped, not returned
+    return text;
   } catch {
     return null;
   }
 }
 
 /**
- * Reactive tail of a chat session's event stream, decoded into structured
- * HandleMessageStreamEvent objects. The chat UI subscribes to this — every
- * token append lands here via Convex reactivity, no SSE connection needed.
+ * Reactive tail of a chat session's event stream. Each entry is one
+ * HandleMessageStreamEvent as a JSON string (see decodeSessionEventFrame for
+ * why they aren't returned structured); the chat UI subscribes and parses.
+ * Every token append lands here via Convex reactivity, no SSE connection
+ * needed.
  */
 export const sessionEvents = query({
   args: {
@@ -250,7 +260,7 @@ export const sessionEvents = query({
   },
   returns: v.union(
     v.object({
-      events: v.array(v.any()),
+      events: v.array(v.string()),
       nextSeq: v.number(),
       done: v.boolean(),
     }),
@@ -274,7 +284,7 @@ export const sessionEvents = query({
       )
       .order("asc")
       .take(500);
-    const events: unknown[] = [];
+    const events: string[] = [];
     let nextSeq = start;
     for (const row of rows) {
       const event = decodeSessionEventFrame(row.data);

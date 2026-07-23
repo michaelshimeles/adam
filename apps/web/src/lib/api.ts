@@ -112,11 +112,28 @@ export interface ChatSendResult {
   error?: string;
 }
 
-/** One reactive page of decoded session stream events (ui:sessionEvents). */
+/**
+ * One reactive page of decoded session stream events (ui:sessionEvents).
+ * Each event is a JSON string — tool payloads carry arbitrary JSON whose
+ * field names (e.g. "$schema") Convex values can't hold structured.
+ */
 export interface SessionEventsPage {
-  events: unknown[];
+  events: string[];
   nextSeq: number;
   done: boolean;
+}
+
+/** Parse a sessionEvents page into event objects (drops malformed lines). */
+export function parseSessionEvents(page: SessionEventsPage): unknown[] {
+  const parsed: unknown[] = [];
+  for (const raw of page.events) {
+    try {
+      parsed.push(JSON.parse(raw));
+    } catch {
+      // Never expected (the server validates each line) — skip defensively.
+    }
+  }
+  return parsed;
 }
 
 export type ModelProvider = "gateway" | "openrouter";
