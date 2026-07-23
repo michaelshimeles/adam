@@ -133,6 +133,8 @@ export const chatApi = {
       message?: string;
       inputResponses?: unknown[];
       continuationToken?: string;
+      /** One-turn context (e.g. { eveWebModel }) for the model resolver. */
+      clientContext?: Record<string, unknown>;
     },
     ChatSendResult
   >("chat:send"),
@@ -141,6 +143,76 @@ export const chatApi = {
     { sessionId: string; startSeq?: number },
     SessionEventsPage | null
   >("ui:sessionEvents"),
+};
+
+/** One entry of the model catalog (models:list). */
+export interface ModelOption {
+  id: string;
+  name: string;
+  description?: string;
+  /** Per-token USD prices, as strings. */
+  pricing?: { input: string; output: string };
+}
+
+export const modelsApi = {
+  /** Provider model catalog, fetched with the visitor's BYOK key. */
+  list: makeFunctionReference<
+    "action",
+    { apiKey: string; provider?: ModelProvider },
+    { models: ModelOption[] }
+  >("models:list"),
+};
+
+// --- Manage page (read-only lists; writes go through the agent in chat) ---
+
+export interface Reminder {
+  id: string;
+  prompt: string;
+  /** 5-field cron for recurring reminders; null for one-offs. */
+  cron: string | null;
+  timezone: string;
+  nextFireAt: number;
+  chatId: string | null;
+  status: string;
+  lastFiredAt: number | null;
+  createdAt: number;
+}
+
+export interface Trigger {
+  hookId: string;
+  name: string;
+  fireCount: number;
+  lastFiredAt: number | null;
+  createdAt: number;
+}
+
+export interface Memory {
+  id: string;
+  content: string;
+  permanent: boolean;
+  updatedAt: number;
+}
+
+export interface Skill {
+  name: string;
+  description: string;
+  markdown: string;
+  updatedAt: number;
+}
+
+export const manageApi = {
+  reminders: makeFunctionReference<"query", Record<string, never>, Reminder[]>(
+    "reminders:list",
+  ),
+  triggers: makeFunctionReference<"query", Record<string, never>, Trigger[]>(
+    "triggers:list",
+  ),
+  memories: makeFunctionReference<"query", { limit?: number }, Memory[]>(
+    "memories:list",
+  ),
+  skills: makeFunctionReference<"query", Record<string, never>, Skill[]>(
+    "agentSkills:list",
+  ),
 };
 
 /** keys:validate action result (packages/backend/convex/keys.ts). */
@@ -166,10 +238,11 @@ export const CONVEX_URL: string =
 /**
  * The agent builder UI — where agents are created and managed. Dev builds
  * link to builder-web's local dev server (port pinned in its vite.config);
- * production builds link to the hosted builder. VITE_BUILDER_URL overrides.
+ * production builds link to the Vercel-deployed builder. VITE_BUILDER_URL
+ * overrides.
  */
 export const BUILDER_URL: string =
   (import.meta.env.VITE_BUILDER_URL as string | undefined) ??
   (import.meta.env.DEV
     ? "http://localhost:5175"
-    : "https://rosy-goldfish-504.convex.site");
+    : "https://builder.heyadam.xyz");

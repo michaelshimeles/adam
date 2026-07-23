@@ -1,7 +1,7 @@
 <script lang="ts">
   import { useConvexClient } from "convex-svelte";
   import type { AgentSummary } from "../api";
-  import { agentsApi, MODEL_SUGGESTIONS, PREFILL_GATEWAY_KEY } from "../api";
+  import { agentsApi, keysApi, MODEL_SUGGESTIONS, PREFILL_GATEWAY_KEY } from "../api";
   import { authArgs } from "../auth.svelte";
   import { Alert, AlertDescription } from "ui/components/alert";
   import { Button } from "ui/components/button";
@@ -240,11 +240,66 @@ instead of grinding through everything in one thread.
   let saving = $state(false);
   let error = $state<string | null>(null);
 
+  // Gateway key check, run in the form so a bad credential surfaces here
+  // instead of as a broken scheduled session after deploy.
+  let keyCheck = $state<{
+    status: "idle" | "checking" | "valid" | "invalid";
+    message: string;
+  }>({ status: "idle", message: "" });
+  let checkedKey = ""; // the key value the current keyCheck verdict applies to
+  let checkSeq = 0; // ignores stale in-flight responses after edits
+
+  async function validateGatewayKey(): Promise<boolean> {
+    const key = gatewayKey.trim();
+    if (key === "") {
+      keyCheck = { status: "idle", message: "" };
+      return true; // blank is allowed (optional field / keep stored key)
+    }
+    if (key === checkedKey && keyCheck.status === "valid") return true;
+    const seq = ++checkSeq;
+    keyCheck = { status: "checking", message: "checking key with the AI Gateway…" };
+    try {
+      const result = await client.action(keysApi.validate, {
+        apiKey: key,
+        ...authArgs(),
+      });
+      if (seq !== checkSeq) return false; // superseded by a newer check
+      checkedKey = key;
+      keyCheck = result.ok
+        ? {
+            status: "valid",
+            message: result.balance
+              ? `key valid — $${result.balance} balance`
+              : "key valid",
+          }
+        : { status: "invalid", message: result.error ?? "Invalid key." };
+      return result.ok;
+    } catch (err) {
+      if (seq !== checkSeq) return false;
+      checkedKey = key;
+      keyCheck = {
+        status: "invalid",
+        message: err instanceof Error ? err.message : "Key check failed.",
+      };
+      return false;
+    }
+  }
+
+  // A prefilled env key gets checked right away, so the badge is meaningful.
+  if (prefilled) void validateGatewayKey();
+
   async function save(event: SubmitEvent) {
     event.preventDefault();
     if (saving) return;
     saving = true;
     error = null;
+    // Gate the save on the key check: a bad key would only surface after
+    // deploy, as scheduled sessions that silently fail.
+    if (gatewayKey.trim() && !(await validateGatewayKey())) {
+      error = `AI Gateway key: ${keyCheck.message}`;
+      saving = false;
+      return;
+    }
     const config = {
       name,
       model,
@@ -552,8 +607,18 @@ instead of grinding through everything in one thread.
         class="font-mono"
         placeholder={agent?.hasGatewayKey ? "•••••••• (stored)" : "vck_…"}
         autocomplete="off"
+        oninput={() => {
+          if (keyCheck.status !== "idle") keyCheck = { status: "idle", message: "" };
+        }}
+        onblur={() => void validateGatewayKey()}
       />
-      {#if prefilled && gatewayKey === PREFILL_GATEWAY_KEY}
+      {#if keyCheck.status === "checking"}
+        <p class="m-0 font-mono text-[11px] text-muted-foreground">{keyCheck.message}</p>
+      {:else if keyCheck.status === "valid"}
+        <p class="m-0 font-mono text-[11px] text-green-900">{keyCheck.message}</p>
+      {:else if keyCheck.status === "invalid"}
+        <p class="m-0 font-mono text-[11px] text-red-900">{keyCheck.message}</p>
+      {:else if prefilled && gatewayKey === PREFILL_GATEWAY_KEY}
         <p class="m-0 font-mono text-[11px] text-green-900">
           prefilled from your local env (VITE_AI_GATEWAY_API_KEY)
         </p>

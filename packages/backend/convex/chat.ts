@@ -47,6 +47,13 @@ export const send = action({
     /** HITL answers: [{requestId, optionId?, text?}] */
     inputResponses: v.optional(v.array(v.any())),
     continuationToken: v.optional(v.string()),
+    /**
+     * One-turn client context, delivered by the eve channel as a
+     * "Client context:\n<json>" user message. The web UI rides the selected
+     * model along as { eveWebModel }; the agent's dynamic model resolver
+     * picks it up (see agent/agent.ts).
+     */
+    clientContext: v.optional(v.any()),
   },
   returns: sendResult,
   handler: async (ctx, args) => {
@@ -75,6 +82,7 @@ export const send = action({
 
     const body: Record<string, unknown> = {};
     if (args.message !== undefined) body.message = args.message;
+    if (args.clientContext !== undefined) body.clientContext = args.clientContext;
     if (args.inputResponses !== undefined && args.inputResponses.length > 0) {
       body.inputResponses = args.inputResponses;
     }

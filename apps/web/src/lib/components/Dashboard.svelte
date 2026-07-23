@@ -6,6 +6,7 @@
   import ApiKeyDialog from "./ApiKeyDialog.svelte";
   import Chat from "./Chat.svelte";
   import InboxTranscript from "./InboxTranscript.svelte";
+  import ManageView from "./ManageView.svelte";
   import SettingsView from "./SettingsView.svelte";
   import Sidebar from "./Sidebar.svelte";
 
@@ -22,7 +23,7 @@
 
   let sidebarOpen = $state(window.innerWidth >= 768);
   let keyDialogOpen = $state(false);
-  let view = $state<"chat" | "settings">("chat");
+  let view = $state<"chat" | "settings" | "manage">("chat");
   let inboxSelection = $state<{ sessionId: string; title: string } | null>(null);
 
   // BYOK gate: no key yet → the dialog blocks the dashboard.
@@ -85,7 +86,9 @@
   const headerTitle = $derived(
     view === "settings"
       ? "Settings"
-      : (inboxSelection?.title ?? threads.active.title),
+      : view === "manage"
+        ? "Manage"
+        : (inboxSelection?.title ?? threads.active.title),
   );
 </script>
 
@@ -160,6 +163,16 @@
         </button>
         <button
           class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100 {view ===
+          'manage'
+            ? 'bg-gray-200 text-foreground'
+            : 'bg-background text-muted-foreground'}"
+          title="Reminders, event triggers, memory and saved skills"
+          onclick={() => (view = view === "manage" ? "chat" : "manage")}
+        >
+          <span aria-hidden="true">✦</span> Manage
+        </button>
+        <button
+          class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100 {view ===
           'settings'
             ? 'bg-gray-200 text-foreground'
             : 'bg-background text-muted-foreground'}"
@@ -173,6 +186,8 @@
 
     {#if view === "settings"}
       <SettingsView onOpenKeyDialog={() => (keyDialogOpen = true)} />
+    {:else if view === "manage"}
+      <ManageView />
     {:else if inboxSelection !== null}
       <InboxTranscript
         sessionId={inboxSelection.sessionId}

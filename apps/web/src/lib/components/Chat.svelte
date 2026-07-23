@@ -4,15 +4,65 @@
     EveMessage,
     EveMessageInputRequest,
   } from "eve/client";
+  import { useConvexClient } from "convex-svelte";
   import type { createChatSession } from "../chat.svelte";
-  import { AGENT_MODEL, BRAND_NAME } from "../brand";
+  import { BRAND_NAME } from "../brand";
+  import { modelsApi, type ModelOption } from "../api";
+  import { modelKey } from "../apiKey.svelte";
+  import { DEFAULT_MODEL_ID, webModel } from "../models.svelte";
   import { Button } from "ui/components/button";
   import Markdown from "./Markdown.svelte";
+  import ModelPicker from "./ModelPicker.svelte";
 
   let { agent }: { agent: ReturnType<typeof createChatSession> } = $props();
 
   let draft = $state("");
   let hitlText = $state<Record<string, string>>({});
+
+  const client = useConvexClient();
+
+  // Model catalog for the composer's picker, fetched with the visitor's own
+  // key once one exists (the catalog endpoints have no browser CORS). The
+  // catalog resets whenever the key changes: carrying the previous
+  // provider's list across a key swap would offer model ids the new key
+  // cannot run. Selections are remembered per provider (models.svelte.ts),
+  // so the swap itself can never leak the other provider's model id — which
+  // lets a transient empty/failed catalog leave the preference untouched.
+  let models = $state<ModelOption[]>([]);
+  $effect(() => {
+    const apiKey = modelKey.value;
+    const provider = modelKey.provider;
+    models = [];
+    if (!apiKey || !provider) return;
+    webModel.activateProvider(provider);
+    let cancelled = false;
+    void client
+      .action(modelsApi.list, { apiKey, provider })
+      .then((result) => {
+        if (cancelled) return;
+        models = result.models;
+        // A saved model that left this provider's catalog would fail every
+        // turn; fall back to the agent's configured default. Only a loaded
+        // catalog is evidence of removal — an empty one is usually a
+        // transient fetch failure and must not discard the preference.
+        if (
+          result.models.length > 0 &&
+          !result.models.some((option) => option.id === webModel.selected) &&
+          webModel.selected !== DEFAULT_MODEL_ID
+        ) {
+          webModel.select(DEFAULT_MODEL_ID);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  /** The selected model rides along on every send as one-turn context. */
+  function clientContext(): Record<string, unknown> {
+    return { eveWebModel: webModel.selected };
+  }
 
   const busy = $derived(
     agent.status === "submitted" || agent.status === "streaming",
@@ -39,7 +89,7 @@
     if (!message || busy) return;
     draft = "";
     try {
-      await agent.send({ message });
+      await agent.send({ message, clientContext: clientContext() });
     } catch {
       // agent.error carries the failure; the banner below renders it.
     }
@@ -55,6 +105,7 @@
             ...(text !== undefined ? { text } : {}),
           },
         ],
+        clientContext: clientContext(),
       });
     } catch {
       // surfaced via agent.error
@@ -355,9 +406,7 @@
         rows={1}
       ></textarea>
       <div class="flex items-center justify-between gap-2">
-        <span class="pl-1 font-mono text-[11px] text-gray-600">
-          {AGENT_MODEL ?? "anthropic/claude-sonnet-5"}
-        </span>
+        <ModelPicker {models} />
         <div class="flex items-center gap-2">
           <span
             class="font-mono text-[11px] {busy ? 'text-amber-900' : 'text-gray-600'}"
