@@ -1,6 +1,6 @@
 <script lang="ts">
   import { useQuery } from "convex-svelte";
-  import { api } from "../api";
+  import { api, BUILDER_URL } from "../api";
   import { Button } from "ui/components/button";
 
   const health = useQuery(api.queueHealth, {});
@@ -163,7 +163,7 @@
           />
         </svg>
       </a>
-      <Button href="#/dashboard" size="sm">Open Dashboard</Button>
+      <Button href={BUILDER_URL} size="sm">Open Builder</Button>
     </div>
   </nav>
 
@@ -191,7 +191,7 @@
       </p>
 
       <div class="mt-8 flex flex-wrap items-center gap-3">
-        <Button href="#/dashboard" size="lg">Open Dashboard</Button>
+        <Button href={BUILDER_URL} size="lg">Open Builder</Button>
         <Button
           href="https://github.com/michaelshimeles/adam"
           target="_blank"
@@ -514,7 +514,7 @@
         watch a human-in-the-loop approval suspend and resume a workflow.
       </p>
       <div class="mx-auto flex max-w-80 flex-col justify-center gap-3 md:max-w-none md:flex-row">
-        <Button href="#/dashboard" size="lg">Open Dashboard</Button>
+        <Button href={BUILDER_URL} size="lg">Open Builder</Button>
         <Button
           href="https://github.com/michaelshimeles/adam"
           target="_blank"
