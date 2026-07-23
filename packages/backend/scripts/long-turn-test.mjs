@@ -112,7 +112,10 @@ async function waitForTurn(sessionId, startSeq) {
       startSeq: seq,
     });
     if (page) {
-      for (const ev of page.events) {
+      for (const raw of page.events) {
+        // ui:sessionEvents returns JSON strings (tool payloads may contain
+        // $-prefixed keys Convex values can't hold structured).
+        const ev = typeof raw === "string" ? JSON.parse(raw) : raw;
         const t = ev?.type ?? "?";
         if (t === "tool-input-available" || t === "tool-output-available") {
           console.log(`  [${t}] ${ev.toolName ?? ""}`);

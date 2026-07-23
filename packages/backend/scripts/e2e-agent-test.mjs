@@ -40,7 +40,8 @@ async function runTurn(label, sendArgs, { timeoutMs = 180_000 } = {}) {
   const sessionId = sendArgs.sessionId ?? result.sessionId;
 
   const started = Date.now();
-  let lastCount = -1;
+  let startSeq = 0;
+  let eventCount = 0;
   let terminal = null;
   const types = new Map();
   let sawStringEvents = false;
@@ -49,30 +50,35 @@ async function runTurn(label, sendArgs, { timeoutMs = 180_000 } = {}) {
     await sleep(2500);
     let page;
     try {
-      page = await client.query("ui:sessionEvents", { sessionId });
+      // Advance with startSeq — the query caps at 500 events per page, so a
+      // verbose Composio turn would otherwise never surface its terminal event.
+      page = await client.query("ui:sessionEvents", { sessionId, startSeq });
     } catch (err) {
       console.log("✗ sessionEvents query THREW:", err.message.slice(0, 200));
       return { failed: true, sessionId };
     }
     if (!page) continue;
-    sawStringEvents = page.events.every((e) => typeof e === "string");
+    if (page.events.length > 0) {
+      sawStringEvents = page.events.every((e) => typeof e === "string");
+    }
     const events = page.events.map((raw) => {
-      try { return JSON.parse(raw); } catch { return null; }
+      try { return typeof raw === "string" ? JSON.parse(raw) : raw; }
+      catch { return null; }
     }).filter(Boolean);
     for (const event of events) {
       types.set(event.type, (types.get(event.type) ?? 0) + 1);
       const t = eventText(event);
       if (t) text += t;
+      if (["session.waiting", "session.completed", "session.failed"].includes(event.type)) {
+        terminal = event.type;
+      }
     }
-    if (events.length !== lastCount) {
-      lastCount = events.length;
-      process.stdout.write(`  events: ${events.length}\r`);
+    startSeq = page.nextSeq;
+    eventCount += events.length;
+    if (events.length > 0) {
+      process.stdout.write(`  events: ${eventCount}\r`);
     }
-    const last = events.at(-1);
-    if (last && ["session.waiting", "session.completed", "session.failed"].includes(last.type)) {
-      terminal = last.type;
-      break;
-    }
+    if (terminal || page.done) break;
   }
   console.log(`\n  terminal: ${terminal ?? "TIMEOUT"}; events-are-strings: ${sawStringEvents}`);
   console.log(`  event types: ${[...types.entries()].map(([k, n]) => `${k}×${n}`).join(", ")}`);

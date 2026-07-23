@@ -61,7 +61,10 @@ function pickOption(request) {
 while (remaining() > 0) {
   const page = await client.query("ui:sessionEvents", { sessionId, startSeq: seq });
   if (page) {
-    for (const ev of page.events) {
+    for (const raw of page.events) {
+      // ui:sessionEvents returns JSON strings (tool payloads may contain
+      // $-prefixed keys Convex values can't hold structured).
+      const ev = typeof raw === "string" ? JSON.parse(raw) : raw;
       const t = ev?.type ?? "?";
       if (t === "input.requested") {
         for (const request of ev.data?.requests ?? []) {
