@@ -18,18 +18,18 @@ const FAVORITES_KEY = "eve-convex-model-favorites";
 
 export const DEFAULT_MODEL_ID: string = AGENT_MODEL ?? "anthropic/claude-sonnet-5";
 
-function storageKey(provider: ModelProvider | null): string {
-  return provider ? `${MODEL_KEY_PREFIX}:${provider}` : MODEL_KEY_PREFIX;
+function storageKey(provider: ModelProvider): string {
+  return `${MODEL_KEY_PREFIX}:${provider}`;
 }
 
-function loadModel(provider: ModelProvider | null): string {
+/**
+ * A provider starts on its own remembered choice or the default — never
+ * another provider's (or an un-scoped legacy) value, whose id the catalogs
+ * may not share.
+ */
+function loadModel(provider: ModelProvider): string {
   try {
-    return (
-      localStorage.getItem(storageKey(provider)) ??
-      // Pre-per-provider storage; adopt it as the starting choice.
-      localStorage.getItem(MODEL_KEY_PREFIX) ??
-      DEFAULT_MODEL_ID
-    );
+    return localStorage.getItem(storageKey(provider)) ?? DEFAULT_MODEL_ID;
   } catch {
     return DEFAULT_MODEL_ID;
   }
@@ -48,7 +48,9 @@ function loadFavorites(): string[] {
 }
 
 let activeProvider = $state<ModelProvider | null>(null);
-let selected = $state<string>(loadModel(null));
+// The key dialog gates the dashboard, so a provider activates before any
+// send; the default only covers the pre-key render.
+let selected = $state<string>(DEFAULT_MODEL_ID);
 let favorites = $state<string[]>(loadFavorites());
 
 export const webModel = {
@@ -66,6 +68,7 @@ export const webModel = {
   },
   select(id: string): void {
     selected = id;
+    if (activeProvider === null) return; // pre-key render; nothing to scope to
     try {
       localStorage.setItem(storageKey(activeProvider), id);
     } catch {
