@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useQuery } from "convex-svelte";
+  import { keysApi } from "../api";
   import { modelKey } from "../apiKey.svelte";
   import { BRAND_NAME, IS_AGENT_APP } from "../brand";
   import { createChatSession } from "../chat.svelte";
@@ -26,8 +28,26 @@
   let view = $state<"chat" | "settings" | "manage">("chat");
   let inboxSelection = $state<{ sessionId: string; title: string } | null>(null);
 
-  // BYOK gate: no key yet → the dialog blocks the dashboard.
-  const keyRequired = $derived(modelKey.value === null);
+  // Builder-deployed agents set AI_GATEWAY_API_KEY on the deployment — chat
+  // bills that key and the BYOK dialog must never appear. Demo / local builds
+  // without a deployment credential still gate on a visitor key.
+  const deploymentCred = useQuery(keysApi.hasDeploymentCredential, () => ({}));
+  const hasDeploymentCredential = $derived(deploymentCred.data === true);
+  // Wait until the query resolves before gating — otherwise the BYOK dialog
+  // flashes on every agent deploy while the credential check is in flight.
+  const keyRequired = $derived(
+    deploymentCred.data === false && modelKey.value === null,
+  );
+
+  // A visitor key saved before this deployment became hosted would silently
+  // keep billing that visitor — and hosted mode hides every control that
+  // could clear it. Drop it so chat + the model catalog use the deployment
+  // credential.
+  $effect(() => {
+    if (deploymentCred.data === true && modelKey.value !== null) {
+      modelKey.clear();
+    }
+  });
 
   // Point the chat at the active thread's session whenever it changes.
   let activatedThreadId: string | null = null;
@@ -145,22 +165,32 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-1.5">
-        <button
-          class="inline-flex cursor-pointer items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100"
-          title={modelKey.providerLabel
-            ? `Your ${modelKey.providerLabel} key — chats spend your own credits`
-            : "Your API key — chats spend your own credits"}
-          onclick={() => (keyDialogOpen = true)}
-        >
-          <span class="text-[10px] font-medium tracking-[0.04em] text-gray-600 uppercase">key</span>
-          <span class="font-mono font-medium text-foreground">
-            {#if modelKey.hint}
-              {modelKey.provider === "openrouter" ? "or" : "gw"} …{modelKey.hint}
-            {:else}
-              none
-            {/if}
+        {#if hasDeploymentCredential}
+          <span
+            class="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground"
+            title="Chats bill the AI Gateway key configured in the builder"
+          >
+            <span class="text-[10px] font-medium tracking-[0.04em] text-gray-600 uppercase">key</span>
+            <span class="font-mono font-medium text-foreground">hosted</span>
           </span>
-        </button>
+        {:else}
+          <button
+            class="inline-flex cursor-pointer items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100"
+            title={modelKey.providerLabel
+              ? `Your ${modelKey.providerLabel} key — chats spend your own credits`
+              : "Your API key — chats spend your own credits"}
+            onclick={() => (keyDialogOpen = true)}
+          >
+            <span class="text-[10px] font-medium tracking-[0.04em] text-gray-600 uppercase">key</span>
+            <span class="font-mono font-medium text-foreground">
+              {#if modelKey.hint}
+                {modelKey.provider === "openrouter" ? "or" : "gw"} …{modelKey.hint}
+              {:else}
+                none
+              {/if}
+            </span>
+          </button>
+        {/if}
         <button
           class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100 {view ===
           'manage'
@@ -185,7 +215,10 @@
     </header>
 
     {#if view === "settings"}
-      <SettingsView onOpenKeyDialog={() => (keyDialogOpen = true)} />
+      <SettingsView
+        hasDeploymentCredential={hasDeploymentCredential}
+        onOpenKeyDialog={() => (keyDialogOpen = true)}
+      />
     {:else if view === "manage"}
       <ManageView />
     {:else if inboxSelection !== null}
@@ -199,6 +232,6 @@
   </div>
 </div>
 
-{#if keyRequired || keyDialogOpen}
+{#if !hasDeploymentCredential && (keyRequired || keyDialogOpen)}
   <ApiKeyDialog required={keyRequired} onClose={() => (keyDialogOpen = false)} />
 {/if}

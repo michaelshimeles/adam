@@ -4,9 +4,32 @@
  * value. We keep it in localStorage after the unlock screen (same pattern as
  * the agent dashboard's BYOK gateway key). Unset env var = open dashboard,
  * and this stays empty.
+ *
+ * Separately, every browser mints a random OWNER TOKEN on first visit: the
+ * backend stamps it on agents created here and scopes list/get/mutations to
+ * it, so visitors to a shared builder never see each other's agents. Losing
+ * the token (cleared storage, different browser) means starting with an
+ * empty builder — the deployed agents themselves are unaffected.
  */
 
 const STORAGE_KEY = "eve-builder-dashboard-secret";
+const OWNER_TOKEN_KEY = "eve-builder-owner-token";
+
+function loadOwnerToken(): string {
+  try {
+    const existing = localStorage.getItem(OWNER_TOKEN_KEY);
+    if (existing && existing.trim().length > 0) return existing.trim();
+    const minted = crypto.randomUUID();
+    localStorage.setItem(OWNER_TOKEN_KEY, minted);
+    return minted;
+  } catch {
+    // storage unavailable (private mode etc.) — token lives for this visit
+    return crypto.randomUUID();
+  }
+}
+
+/** Per-browser agent ownership capability, stable across visits. */
+export const ownerToken: string = loadOwnerToken();
 
 function load(): string | undefined {
   try {
@@ -44,8 +67,8 @@ export const dashboardSecret = {
 };
 
 /** Args fragment spread into every dashboard query/mutation call. */
-export function authArgs(): { dashboardSecret?: string } {
-  return secret ? { dashboardSecret: secret } : {};
+export function authArgs(): { dashboardSecret?: string; ownerToken: string } {
+  return { ...(secret ? { dashboardSecret: secret } : {}), ownerToken };
 }
 
 /** True when a server error means "wrong or missing dashboard secret". */

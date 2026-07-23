@@ -21,23 +21,23 @@
 
   const client = useConvexClient();
 
-  // Model catalog for the composer's picker, fetched with the visitor's own
-  // key once one exists (the catalog endpoints have no browser CORS). The
-  // catalog resets whenever the key changes: carrying the previous
-  // provider's list across a key swap would offer model ids the new key
-  // cannot run. Selections are remembered per provider (models.svelte.ts),
-  // so the swap itself can never leak the other provider's model id — which
-  // lets a transient empty/failed catalog leave the preference untouched.
+  // Model catalog for the composer's picker. Uses the visitor BYOK key when
+  // present; otherwise models:list falls back to the deployment credential
+  // (builder-configured agents). The catalog resets whenever the key changes
+  // so a provider swap never offers model ids the new key cannot run.
   let models = $state<ModelOption[]>([]);
   $effect(() => {
     const apiKey = modelKey.value;
     const provider = modelKey.provider;
     models = [];
-    if (!apiKey || !provider) return;
-    webModel.activateProvider(provider);
+    if (provider) webModel.activateProvider(provider);
+    else webModel.activateProvider("gateway");
     let cancelled = false;
     void client
-      .action(modelsApi.list, { apiKey, provider })
+      .action(
+        modelsApi.list,
+        apiKey && provider ? { apiKey, provider } : {},
+      )
       .then((result) => {
         if (cancelled) return;
         models = result.models;

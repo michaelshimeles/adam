@@ -193,15 +193,10 @@ export function createChatSession(options?: {
     clientContext?: Record<string, unknown>;
   }): Promise<void> {
     if (sendInFlight) return;
-    // BYOK: the send action requires the visitor's own key (AI Gateway or
-    // OpenRouter). The dashboard's key dialog normally guarantees this
-    // exists.
+    // Prefer a visitor BYOK key when present; otherwise chat:send uses the
+    // deployment's AI_GATEWAY_API_KEY (builder-configured agents).
     const apiKey = modelKey.value;
     const provider = modelKey.provider;
-    if (!apiKey || !provider) {
-      errorMessage = "Add your API key (topbar) to chat.";
-      return;
-    }
     errorMessage = null;
     const submissionId = crypto.randomUUID();
     if (input.message !== undefined) {
@@ -230,8 +225,7 @@ export function createChatSession(options?: {
     const sendEpoch = epoch;
     try {
       const result = await client.action(chatApi.send, {
-        apiKey,
-        provider,
+        ...(apiKey && provider ? { apiKey, provider } : {}),
         ...(sessionId ? { sessionId } : {}),
         ...(input.message !== undefined ? { message: input.message } : {}),
         ...(input.inputResponses && input.inputResponses.length > 0

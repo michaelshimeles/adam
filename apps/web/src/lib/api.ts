@@ -142,8 +142,11 @@ export const chatApi = {
   send: makeFunctionReference<
     "action",
     {
-      /** BYOK: the visitor's own key, spent on their own turns. */
-      apiKey: string;
+      /**
+       * Optional visitor BYOK key. Omit when the deployment has its own
+       * AI_GATEWAY_API_KEY (builder-configured agents).
+       */
+      apiKey?: string;
       /** Which service issued apiKey; omitted means "gateway". */
       provider?: ModelProvider;
       sessionId?: string;
@@ -172,10 +175,13 @@ export interface ModelOption {
 }
 
 export const modelsApi = {
-  /** Provider model catalog, fetched with the visitor's BYOK key. */
+  /**
+   * Provider model catalog. Pass a visitor BYOK key, or omit to use the
+   * deployment's own credential when one is configured.
+   */
   list: makeFunctionReference<
     "action",
-    { apiKey: string; provider?: ModelProvider },
+    { apiKey?: string; provider?: ModelProvider },
     { models: ModelOption[] }
   >("models:list"),
 };
@@ -246,6 +252,12 @@ export const keysApi = {
     { apiKey: string; provider?: ModelProvider },
     KeyValidationResult
   >("keys:validate"),
+  /** True when the deployment can chat without a visitor-supplied key. */
+  hasDeploymentCredential: makeFunctionReference<
+    "query",
+    Record<string, never>,
+    boolean
+  >("keys:hasDeploymentCredential"),
 };
 
 export const CONVEX_URL: string =

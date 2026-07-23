@@ -108,7 +108,7 @@ export type AgentConfigInput = {
  * Every dashboard call optionally carries the access secret; required when
  * the deployment sets BUILDER_DASHBOARD_SECRET (see lib/auth.svelte.ts).
  */
-type DashboardAuth = { dashboardSecret?: string };
+type DashboardAuth = { dashboardSecret?: string; ownerToken?: string };
 
 export const agentsApi = {
   list: makeFunctionReference<"query", DashboardAuth, AgentSummary[]>(
@@ -123,7 +123,7 @@ export const agentsApi = {
     "mutation",
     DashboardAuth &
       AgentConfigInput & {
-        aiGatewayApiKey?: string;
+        aiGatewayApiKey: string;
         telegramBotToken?: string;
         composioApiKey?: string;
         convexDeployKey?: string;

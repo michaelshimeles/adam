@@ -2,7 +2,16 @@ import {
   createOpenRouter,
   type LanguageModelV4,
 } from "@openrouter/ai-sdk-provider";
-import type { ModelKeyCredential } from "../lib/modelKeys";
+import {
+  ownerOpenRouterKey,
+  type ModelKeyCredential,
+} from "../lib/modelKeys";
+
+export {
+  hasOwnerCredential,
+  ownerApiKey,
+  ownerProvider,
+} from "../lib/modelKeys";
 
 /**
  * Serialized access to the process-global model credential.
@@ -100,16 +109,6 @@ function openRouterDefaultProvider(apiKey: string) {
     embeddingModel: (modelId: string) => openrouter.textEmbeddingModel(modelId),
     imageModel: (modelId: string) => openrouter.imageModel(modelId),
   };
-}
-
-/** Owner baseline: gateway credentials win; OpenRouter is the fallback. */
-function ownerOpenRouterKey(): string | undefined {
-  const hasGatewayCredential =
-    (process.env.AI_GATEWAY_API_KEY ?? "").trim() !== "" ||
-    (process.env.VERCEL_OIDC_TOKEN ?? "").trim() !== "";
-  if (hasGatewayCredential) return undefined;
-  const openRouterKey = (process.env.OPENROUTER_API_KEY ?? "").trim();
-  return openRouterKey === "" ? undefined : openRouterKey;
 }
 
 export function withModelKey<T>(

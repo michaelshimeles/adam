@@ -7,7 +7,13 @@
   import RunsPanel from "./RunsPanel.svelte";
   import WebhookPanel from "./WebhookPanel.svelte";
 
-  let { onOpenKeyDialog }: { onOpenKeyDialog: () => void } = $props();
+  let {
+    hasDeploymentCredential = false,
+    onOpenKeyDialog,
+  }: {
+    hasDeploymentCredential?: boolean;
+    onOpenKeyDialog: () => void;
+  } = $props();
 
   let selectedRunId = $state<string | null>(null);
 </script>
@@ -27,24 +33,33 @@
       </h3>
       <div class="flex items-center justify-between gap-3 rounded-lg border bg-gray-100/40 px-4 py-3">
         <div class="min-w-0">
-          <p class="m-0 text-[13px] text-foreground">
-            {#if modelKey.hint}
-              {modelKey.providerLabel ?? "Model"} key
-              <code class="font-mono text-muted-foreground">…{modelKey.hint}</code>
-            {:else}
-              No key set
-            {/if}
-          </p>
-          <p class="m-0 mt-0.5 text-xs text-muted-foreground">
-            Chats spend your own credits — the key stays in this browser.
-          </p>
+          {#if hasDeploymentCredential}
+            <p class="m-0 text-[13px] text-foreground">Deployment key</p>
+            <p class="m-0 mt-0.5 text-xs text-muted-foreground">
+              Chats bill the AI Gateway key configured in the builder.
+            </p>
+          {:else}
+            <p class="m-0 text-[13px] text-foreground">
+              {#if modelKey.hint}
+                {modelKey.providerLabel ?? "Model"} key
+                <code class="font-mono text-muted-foreground">…{modelKey.hint}</code>
+              {:else}
+                No key set
+              {/if}
+            </p>
+            <p class="m-0 mt-0.5 text-xs text-muted-foreground">
+              Chats spend your own credits — the key stays in this browser.
+            </p>
+          {/if}
         </div>
-        <button
-          class="shrink-0 cursor-pointer rounded-md border bg-background px-3 py-1.5 text-xs text-foreground transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100"
-          onclick={onOpenKeyDialog}
-        >
-          {modelKey.hint ? "Change key" : "Add key"}
-        </button>
+        {#if !hasDeploymentCredential}
+          <button
+            class="shrink-0 cursor-pointer rounded-md border bg-background px-3 py-1.5 text-xs text-foreground transition-colors duration-150 hover:border-alpha-500 hover:bg-gray-100"
+            onclick={onOpenKeyDialog}
+          >
+            {modelKey.hint ? "Change key" : "Add key"}
+          </button>
+        {/if}
       </div>
     </div>
 
