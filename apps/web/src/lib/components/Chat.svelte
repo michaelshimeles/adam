@@ -25,24 +25,28 @@
   // key once one exists (the catalog endpoints have no browser CORS). The
   // catalog resets whenever the key changes: carrying the previous
   // provider's list across a key swap would offer model ids the new key
-  // cannot run.
+  // cannot run. Selections are remembered per provider (models.svelte.ts),
+  // so the swap itself can never leak the other provider's model id — which
+  // lets a transient empty/failed catalog leave the preference untouched.
   let models = $state<ModelOption[]>([]);
   $effect(() => {
     const apiKey = modelKey.value;
     const provider = modelKey.provider;
     models = [];
     if (!apiKey || !provider) return;
+    webModel.activateProvider(provider);
     let cancelled = false;
     void client
       .action(modelsApi.list, { apiKey, provider })
       .then((result) => {
         if (cancelled) return;
         models = result.models;
-        // A saved model missing from the new catalog would fail every turn;
-        // fall back to the agent's configured default instead. This applies
-        // to an empty catalog too — carrying a previous provider's selection
-        // past a key swap would send an id the new provider rejects.
+        // A saved model that left this provider's catalog would fail every
+        // turn; fall back to the agent's configured default. Only a loaded
+        // catalog is evidence of removal — an empty one is usually a
+        // transient fetch failure and must not discard the preference.
         if (
+          result.models.length > 0 &&
           !result.models.some((option) => option.id === webModel.selected) &&
           webModel.selected !== DEFAULT_MODEL_ID
         ) {
