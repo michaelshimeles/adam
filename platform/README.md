@@ -74,11 +74,13 @@ list left, config form / detail + streaming deploy log right.
 
 ## Credentials model
 
-- **AI Gateway key is required** in the builder form before deploy. The worker
-  sets it as `AI_GATEWAY_API_KEY` plus the `CHAT_USE_DEPLOYMENT_KEY=1` opt-in
-  on the agent deployment; chat, schedules, and webhooks bill that key and the
-  deployed site skips the visitor key dialog. Deployments without the opt-in
-  (e.g. the adam demo, whose key exists only for schedules) stay visitor-BYOK.
+- **A model API key is required** in the builder form before deploy — Vercel
+  AI Gateway or OpenRouter, picked in the form. The worker sets it as
+  `AI_GATEWAY_API_KEY` / `OPENROUTER_API_KEY` plus the
+  `CHAT_USE_DEPLOYMENT_KEY=1` opt-in on the agent deployment; chat, schedules,
+  and webhooks bill that key and the deployed site skips the visitor key
+  dialog. Deployments without the opt-in (e.g. the adam demo, whose key exists
+  only for schedules) stay visitor-BYOK.
 - The key is stored in `agentSecrets` — read only by the secret-guarded worker
   API, never returned to the browser.
 - **Worker API** (`worker:claim/setStep/appendLogs/complete`) is gated by

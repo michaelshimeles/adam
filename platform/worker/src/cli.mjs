@@ -69,6 +69,7 @@ const input = {
     },
   },
   aiGatewayApiKey: raw.aiGatewayApiKey,
+  openRouterApiKey: raw.openRouterApiKey,
   telegramBotToken: raw.telegramBotToken,
   composioApiKey: raw.composioApiKey,
   convexDeployKey: raw.convexDeployKey,

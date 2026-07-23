@@ -132,6 +132,7 @@ for (;;) {
       {
         config: job.config,
         aiGatewayApiKey: job.aiGatewayApiKey,
+        openRouterApiKey: job.openRouterApiKey,
         telegramBotToken: job.telegramBotToken,
         composioApiKey: job.composioApiKey,
         convexDeployKey: job.convexDeployKey,

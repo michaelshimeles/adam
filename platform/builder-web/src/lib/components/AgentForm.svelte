@@ -1,7 +1,13 @@
 <script lang="ts">
   import { useConvexClient } from "convex-svelte";
-  import type { AgentSummary } from "../api";
-  import { agentsApi, keysApi, MODEL_SUGGESTIONS, PREFILL_GATEWAY_KEY } from "../api";
+  import type { AgentSummary, ModelKeyProvider, ModelOption } from "../api";
+  import {
+    agentsApi,
+    keysApi,
+    modelsApi,
+    MODEL_SUGGESTIONS,
+    PREFILL_GATEWAY_KEY,
+  } from "../api";
   import { authArgs } from "../auth.svelte";
   import { Alert, AlertDescription } from "ui/components/alert";
   import { Button } from "ui/components/button";
@@ -10,6 +16,7 @@
   import { Label } from "ui/components/label";
   import { Switch } from "ui/components/switch";
   import { Textarea } from "ui/components/textarea";
+  import ModelPicker from "./ModelPicker.svelte";
 
   let {
     agent = null,
@@ -233,39 +240,55 @@ instead of grinding through everything in one thread.
     initial?.schedule.prompt ??
       "Check workflow health with the workflow_stats tool. If anything looks unhealthy, save a short incident note prefixed with [heartbeat].",
   );
+  const PROVIDER_LABELS: Record<ModelKeyProvider, string> = {
+    gateway: "Vercel AI Gateway",
+    openrouter: "OpenRouter",
+  };
+  /** Which provider the agent's stored credential belongs to (edit mode). */
+  const storedProvider: ModelKeyProvider | null = initial?.hasGatewayKey
+    ? (initial.modelKeyProvider ?? "gateway")
+    : null;
+  let keyProvider = $state<ModelKeyProvider>(storedProvider ?? "gateway");
   // Prefill from local env unless the agent already has a stored key (blank
   // means "keep it" on edit — don't overwrite with the local one unasked).
+  // The env prefill is a gateway key, so it only applies to that provider.
   const prefilled = !initial?.hasGatewayKey && PREFILL_GATEWAY_KEY !== "";
-  let gatewayKey = $state(prefilled ? PREFILL_GATEWAY_KEY : "");
+  let modelApiKey = $state(prefilled ? PREFILL_GATEWAY_KEY : "");
   let saving = $state(false);
   let error = $state<string | null>(null);
 
-  // Gateway key check, run in the form so a bad credential surfaces here
-  // instead of as a broken scheduled session after deploy.
+  // Model key check, run in the form so a bad credential surfaces here
+  // instead of as broken chat/scheduled sessions after deploy.
   let keyCheck = $state<{
     status: "idle" | "checking" | "valid" | "invalid";
     message: string;
   }>({ status: "idle", message: "" });
-  let checkedKey = ""; // the key value the current keyCheck verdict applies to
+  let checkedKey = ""; // the key+provider the current keyCheck verdict applies to
   let checkSeq = 0; // ignores stale in-flight responses after edits
 
-  async function validateGatewayKey(): Promise<boolean> {
-    const key = gatewayKey.trim();
+  async function validateModelKey(): Promise<boolean> {
+    const key = modelApiKey.trim();
     if (key === "") {
       // Edit with a stored key: leave blank to keep it. Create: required.
       keyCheck = { status: "idle", message: "" };
       return Boolean(agent?.hasGatewayKey);
     }
-    if (key === checkedKey && keyCheck.status === "valid") return true;
+    if (`${keyProvider}:${key}` === checkedKey && keyCheck.status === "valid") {
+      return true;
+    }
     const seq = ++checkSeq;
-    keyCheck = { status: "checking", message: "checking key with the AI Gateway…" };
+    keyCheck = {
+      status: "checking",
+      message: `checking key with ${PROVIDER_LABELS[keyProvider]}…`,
+    };
     try {
       const result = await client.action(keysApi.validate, {
         apiKey: key,
+        provider: keyProvider,
         ...authArgs(),
       });
       if (seq !== checkSeq) return false; // superseded by a newer check
-      checkedKey = key;
+      checkedKey = `${keyProvider}:${key}`;
       keyCheck = result.ok
         ? {
             status: "valid",
@@ -277,7 +300,7 @@ instead of grinding through everything in one thread.
       return result.ok;
     } catch (err) {
       if (seq !== checkSeq) return false;
-      checkedKey = key;
+      checkedKey = `${keyProvider}:${key}`;
       keyCheck = {
         status: "invalid",
         message: err instanceof Error ? err.message : "Key check failed.",
@@ -286,8 +309,49 @@ instead of grinding through everything in one thread.
     }
   }
 
+  function switchProvider(next: ModelKeyProvider): void {
+    if (keyProvider === next) return;
+    keyProvider = next;
+    checkSeq++; // drop any in-flight check for the other provider
+    checkedKey = "";
+    // A key from one provider is meaningless to the other — reset the field
+    // (back to the env prefill when returning to the gateway on create).
+    modelApiKey = next === "gateway" && prefilled ? PREFILL_GATEWAY_KEY : "";
+    keyCheck = { status: "idle", message: "" };
+    if (modelApiKey !== "") void validateModelKey();
+  }
+
   // A prefilled env key gets checked right away, so the badge is meaningful.
-  if (prefilled) void validateGatewayKey();
+  if (prefilled) void validateModelKey();
+
+  // Model catalog for the picker — the same list the deployed site's picker
+  // shows. Fetched with the key typed in the form once it validates, or
+  // (edit mode) with the agent's stored credential server-side. Empty until
+  // a key exists; the model field falls back to free text then.
+  let catalog = $state<ModelOption[]>([]);
+  $effect(() => {
+    const typed = modelApiKey.trim();
+    const validTyped = keyCheck.status === "valid" && typed !== "";
+    const params = validTyped
+      ? { apiKey: typed, provider: keyProvider }
+      : initial?.hasGatewayKey
+        ? { agentId: initial._id }
+        : null;
+    if (params === null) {
+      catalog = [];
+      return;
+    }
+    let cancelled = false;
+    void client
+      .action(modelsApi.list, { ...params, ...authArgs() })
+      .then((result) => {
+        if (!cancelled) catalog = result.models;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  });
 
   async function save(event: SubmitEvent) {
     event.preventDefault();
@@ -295,15 +359,16 @@ instead of grinding through everything in one thread.
     saving = true;
     error = null;
     // Key is required for create; on edit a blank field keeps the stored key.
-    if (!gatewayKey.trim() && !agent?.hasGatewayKey) {
-      error = "AI Gateway API key is required — chat and schedules bill this key.";
+    if (!modelApiKey.trim() && !agent?.hasGatewayKey) {
+      error =
+        "A model API key (AI Gateway or OpenRouter) is required — chat and schedules bill this key.";
       saving = false;
       return;
     }
     // Gate the save on the key check: a bad key would only surface after
     // deploy as failed chat / schedule sessions.
-    if (gatewayKey.trim() && !(await validateGatewayKey())) {
-      error = `AI Gateway key: ${keyCheck.message}`;
+    if (modelApiKey.trim() && !(await validateModelKey())) {
+      error = `${PROVIDER_LABELS[keyProvider]} key: ${keyCheck.message}`;
       saving = false;
       return;
     }
@@ -330,7 +395,11 @@ instead of grinding through everything in one thread.
           ...config,
           ...authArgs(),
           // Only replace stored secrets when a new value was typed.
-          ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
+          ...(modelApiKey.trim()
+            ? keyProvider === "openrouter"
+              ? { openRouterApiKey: modelApiKey.trim() }
+              : { aiGatewayApiKey: modelApiKey.trim() }
+            : {}),
           ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
           ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
           ...(convexDeployKey.trim() ? { convexDeployKey: convexDeployKey.trim() } : {}),
@@ -340,7 +409,9 @@ instead of grinding through everything in one thread.
         const id = await client.mutation(agentsApi.create, {
           ...config,
           ...authArgs(),
-          aiGatewayApiKey: gatewayKey.trim(),
+          ...(keyProvider === "openrouter"
+            ? { openRouterApiKey: modelApiKey.trim() }
+            : { aiGatewayApiKey: modelApiKey.trim() }),
           ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
           ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
           ...(convexDeployKey.trim() ? { convexDeployKey: convexDeployKey.trim() } : {}),
@@ -395,14 +466,21 @@ instead of grinding through everything in one thread.
       </div>
       <div class="flex flex-col gap-1.5">
         <Label for="agent-model">
-          Model <span class="font-normal text-muted-foreground">(AI Gateway id)</span>
+          Model
+          <span class="font-normal text-muted-foreground">
+            {catalog.length > 0 ? "(from your key's catalog)" : "(model id)"}
+          </span>
         </Label>
-        <Input id="agent-model" bind:value={model} list="model-suggestions" class="font-mono" required />
-        <datalist id="model-suggestions">
-          {#each MODEL_SUGGESTIONS as m (m)}
-            <option value={m}></option>
-          {/each}
-        </datalist>
+        {#if catalog.length > 0}
+          <ModelPicker models={catalog} value={model} onSelect={(id) => (model = id)} />
+        {:else}
+          <Input id="agent-model" bind:value={model} list="model-suggestions" class="font-mono" required />
+          <datalist id="model-suggestions">
+            {#each MODEL_SUGGESTIONS as m (m)}
+              <option value={m}></option>
+            {/each}
+          </datalist>
+        {/if}
       </div>
       <div class="flex flex-col gap-1.5">
         <Label for="agent-timezone">
@@ -425,7 +503,7 @@ instead of grinding through everything in one thread.
       id="agent-instructions"
       bind:value={instructions}
       rows={9}
-      class="font-mono text-[13px] leading-5"
+      class="max-h-72 overflow-y-auto font-mono text-[13px] leading-5"
       required
     />
   </section>
@@ -479,9 +557,9 @@ instead of grinding through everything in one thread.
         <code class="font-mono text-[11px]">replyUrl</code> in the body receives the agent's
         replies.
       </p>
-      {#if !agent?.hasGatewayKey && !gatewayKey.trim()}
+      {#if !agent?.hasGatewayKey && !modelApiKey.trim()}
         <p class="m-0 text-xs leading-4 text-amber-900">
-          Webhook sessions run on the deployment's own credential — add an AI Gateway key below or
+          Webhook sessions run on the deployment's own credential — add a model API key below or
           webhook turns will fail.
         </p>
       {/if}
@@ -530,9 +608,9 @@ instead of grinding through everything in one thread.
         The deploy registers the bot's webhook automatically. Telegram sessions run on the
         deployment's own credential.
       </p>
-      {#if !agent?.hasGatewayKey && !gatewayKey.trim()}
+      {#if !agent?.hasGatewayKey && !modelApiKey.trim()}
         <p class="m-0 text-xs leading-4 text-amber-900">
-          Telegram sessions run on the deployment's own credential — add an AI Gateway key below
+          Telegram sessions run on the deployment's own credential — add a model API key below
           or Telegram turns will fail.
         </p>
       {/if}
@@ -587,9 +665,9 @@ instead of grinding through everything in one thread.
         <Label for="schedule-prompt">Schedule prompt</Label>
         <Textarea id="schedule-prompt" bind:value={schedulePrompt} rows={3} />
       </div>
-      {#if !agent?.hasGatewayKey && !gatewayKey.trim()}
+      {#if !agent?.hasGatewayKey && !modelApiKey.trim()}
         <p class="m-0 text-xs leading-4 text-amber-900">
-          Schedules run on the deployment's own credential — add an AI Gateway key below or
+          Schedules run on the deployment's own credential — add a model API key below or
           scheduled sessions will fail.
         </p>
       {/if}
@@ -599,25 +677,55 @@ instead of grinding through everything in one thread.
   <section class="flex flex-col gap-3 border-t pt-5">
     {@render sectionTitle("Credential")}
     <div class="flex flex-col gap-1.5">
-      <Label for="gateway-key" class="flex-wrap">
-        AI Gateway API key
+      <Label for="model-key" class="flex-wrap">
+        Model API key
         <span class="font-normal text-muted-foreground">
           {agent?.hasGatewayKey
-            ? "(required — leave blank to keep the stored key; powers chat, schedules, and webhooks)"
+            ? `(required — leave blank to keep the stored ${PROVIDER_LABELS[storedProvider ?? "gateway"]} key; powers chat, schedules, and webhooks)`
             : "(required — powers chat, schedules, and webhooks on the deployed agent)"}
         </span>
       </Label>
+      <div class="grid grid-cols-2 gap-1 rounded-md border p-1" role="tablist" aria-label="Key provider">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={keyProvider === "gateway"}
+          class="cursor-pointer rounded px-3 py-1.5 font-mono text-xs transition-colors duration-150 {keyProvider ===
+          'gateway'
+            ? 'bg-gray-200 text-foreground'
+            : 'text-muted-foreground hover:bg-gray-100'}"
+          onclick={() => switchProvider("gateway")}
+        >
+          Vercel AI Gateway
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={keyProvider === "openrouter"}
+          class="cursor-pointer rounded px-3 py-1.5 font-mono text-xs transition-colors duration-150 {keyProvider ===
+          'openrouter'
+            ? 'bg-gray-200 text-foreground'
+            : 'text-muted-foreground hover:bg-gray-100'}"
+          onclick={() => switchProvider("openrouter")}
+        >
+          OpenRouter
+        </button>
+      </div>
       <Input
-        id="gateway-key"
-        bind:value={gatewayKey}
+        id="model-key"
+        bind:value={modelApiKey}
         type="password"
         class="font-mono"
-        placeholder={agent?.hasGatewayKey ? "•••••••• (stored)" : "vck_…"}
+        placeholder={agent?.hasGatewayKey && storedProvider === keyProvider
+          ? "•••••••• (stored)"
+          : keyProvider === "openrouter"
+            ? "sk-or-…"
+            : "vck_…"}
         autocomplete="off"
         oninput={() => {
           if (keyCheck.status !== "idle") keyCheck = { status: "idle", message: "" };
         }}
-        onblur={() => void validateGatewayKey()}
+        onblur={() => void validateModelKey()}
       />
       {#if keyCheck.status === "checking"}
         <p class="m-0 font-mono text-[11px] text-muted-foreground">{keyCheck.message}</p>
@@ -625,9 +733,16 @@ instead of grinding through everything in one thread.
         <p class="m-0 font-mono text-[11px] text-green-900">{keyCheck.message}</p>
       {:else if keyCheck.status === "invalid"}
         <p class="m-0 font-mono text-[11px] text-red-900">{keyCheck.message}</p>
-      {:else if prefilled && gatewayKey === PREFILL_GATEWAY_KEY}
+      {:else if prefilled && keyProvider === "gateway" && modelApiKey === PREFILL_GATEWAY_KEY}
         <p class="m-0 font-mono text-[11px] text-green-900">
           prefilled from your local env (VITE_AI_GATEWAY_API_KEY)
+        </p>
+      {/if}
+      {#if agent?.hasGatewayKey && storedProvider !== keyProvider && !modelApiKey.trim()}
+        <p class="m-0 text-xs leading-4 text-amber-900">
+          Saving a {PROVIDER_LABELS[keyProvider]} key replaces the stored
+          {PROVIDER_LABELS[storedProvider ?? "gateway"]} key. Leave the
+          {PROVIDER_LABELS[storedProvider ?? "gateway"]} tab selected to keep it.
         </p>
       {/if}
     </div>

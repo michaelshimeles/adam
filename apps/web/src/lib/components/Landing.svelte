@@ -114,6 +114,34 @@
     ["SSE transport", "reactive Convex queries"],
     ["Postgres + Redis", "one Convex deployment"],
   ];
+
+  const builder = [
+    {
+      title: "One-click deploys",
+      tag: "builder → worker → convex",
+      body: "A form — name, instructions, tools, schedule, channels — becomes a deploy job. A worker compiles the agent with eve build and provisions it a fresh Convex project, or pushes into yours with a deploy key.",
+    },
+    {
+      title: "Hosted credentials",
+      tag: "AI Gateway · OpenRouter",
+      body: "Deploys require a model key — Vercel AI Gateway or OpenRouter, your pick. It becomes the deployment's credential: chat, schedules, and webhooks bill it, and visitors chat without ever seeing a key dialog.",
+    },
+    {
+      title: "Model picker",
+      tag: "models:list · eveWebModel",
+      body: "Choose the model from your key's live catalog in the builder, then swap it per turn in the deployed chat — the resolver reads the choice as client context.",
+    },
+    {
+      title: "Channels + connections",
+      tag: "webhook · telegram · composio",
+      body: "Inbound webhook and Telegram channels ship with the agent, and a Composio key connects it to real apps — Gmail, Calendar, Notion, Slack — through in-chat OAuth.",
+    },
+    {
+      title: "Private workspaces",
+      tag: "per-browser owner tokens",
+      body: "Each browser only sees the agents it created — no accounts, just a capability token minted on first visit and checked on every call.",
+    },
+  ];
 </script>
 
 {#snippet sectionHead(eyebrow: string, title: string, sub?: string)}
@@ -136,7 +164,6 @@
     class="sticky top-0 z-20 flex min-h-16 items-center justify-between border-b bg-background/70 px-4 backdrop-blur-md md:px-6"
   >
     <a class="flex items-baseline gap-2.5 no-underline" href="#/">
-      <span class="text-sm text-foreground">▲</span>
       <span class="text-sm font-semibold tracking-[-0.28px] text-foreground">adam</span>
       <span class="hidden font-mono text-xs text-gray-600 sm:inline">eve × convex</span>
     </a>
@@ -144,6 +171,10 @@
       <a
         class="hidden rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors duration-150 hover:bg-alpha-100 hover:text-foreground md:inline-block"
         href="#how">How It Works</a
+      >
+      <a
+        class="hidden rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors duration-150 hover:bg-alpha-100 hover:text-foreground md:inline-block"
+        href="#builder">Builder</a
       >
       <a
         class="hidden rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors duration-150 hover:bg-alpha-100 hover:text-foreground md:inline-block"
@@ -187,7 +218,8 @@
           rel="noreferrer">eve</a
         >
         — Vercel's agent framework — and executes its entire engine inside Convex. One deployment
-        is the database, the queue, the scheduler, and the runtime.
+        is the database, the queue, the scheduler, and the runtime. The builder turns that into a
+        factory: describe an agent and it ships as its own deployment, hosted key included.
       </p>
 
       <div class="mt-8 flex flex-wrap items-center gap-3">
@@ -394,6 +426,37 @@
     </div>
   </section>
 
+  <!-- builder: the port, productized -->
+  <section class="border-t" id="builder">
+    <div class="mx-auto max-w-[980px] scroll-mt-20 px-4 py-24 md:px-6">
+      {@render sectionHead(
+        "the builder",
+        "Describe an agent, get a deployment",
+        "This site is one instance of the template. The builder stamps out new ones — each agent gets its own Convex project running the same ported runtime.",
+      )}
+      <div class="border-t">
+        {#each builder as item (item.title)}
+          <div class="grid gap-x-10 gap-y-1.5 border-b py-5 md:grid-cols-[280px_minmax(0,1fr)]">
+            <div class="min-w-0">
+              <h4 class="m-0 text-sm leading-5 font-semibold tracking-[-0.28px] text-gray-1000">
+                {item.title}
+              </h4>
+              <code class="mt-1 block font-mono text-[11px] leading-4 break-words text-gray-600">
+                {item.tag}
+              </code>
+            </div>
+            <p class="m-0 max-w-[560px] self-center text-sm leading-5 text-muted-foreground">
+              {item.body}
+            </p>
+          </div>
+        {/each}
+      </div>
+      <div class="mt-8 flex justify-center">
+        <Button href={BUILDER_URL} size="lg">Open Builder</Button>
+      </div>
+    </div>
+  </section>
+
   <!-- architecture -->
   <section class="border-t" id="arch">
     <div class="mx-auto max-w-[980px] scroll-mt-20 px-4 py-24 md:px-6">
@@ -507,11 +570,12 @@
   <section class="border-t">
     <div class="mx-auto max-w-[820px] px-4 py-24 text-center md:px-6">
       <h3 class="m-0 text-[32px] leading-10 font-semibold tracking-[-1.28px] text-gray-1000">
-        Talk to it
+        Ship one
       </h3>
       <p class="mx-auto mt-3 mb-8 max-w-[520px] text-base leading-6 text-muted-foreground">
-        Ask it what time it is, save a note, check queue health, or clear the notepad and
-        watch a human-in-the-loop approval suspend and resume a workflow.
+        Open the builder, paste a model key, and describe your agent — reminders, memory,
+        skills, webhooks, Telegram, app connections. Minutes later it's live on its own
+        Convex deployment, and visitors chat without bringing a key.
       </p>
       <div class="mx-auto flex max-w-80 flex-col justify-center gap-3 md:max-w-none md:flex-row">
         <Button href={BUILDER_URL} size="lg">Open Builder</Button>

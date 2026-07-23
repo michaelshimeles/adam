@@ -55,7 +55,6 @@
 >
   <div class="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
     <span class="flex items-baseline gap-2 pl-1 text-sm font-semibold tracking-[-0.28px]">
-      <span aria-hidden="true">▲</span>
       {BRAND_NAME}
     </span>
     <button
