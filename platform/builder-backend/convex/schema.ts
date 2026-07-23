@@ -90,6 +90,15 @@ export default defineSchema({
   agents: defineTable({
     ...agentConfig,
     status: agentStatus,
+    /**
+     * Per-browser owner capability token. The builder UI mints a random
+     * token on first visit (localStorage) and sends it with every call;
+     * list/get/mutations only match agents stamped with the same token.
+     * Absent on rows created before this existed ("legacy") — those stay
+     * visible to everyone until a token-bearing browser writes to them.
+     * Never returned to clients.
+     */
+    ownerToken: v.optional(v.string()),
     /** Set by create/update so the UI can show it without reading secrets. */
     hasGatewayKey: v.boolean(),
     hasTelegramToken: v.optional(v.boolean()),
@@ -111,7 +120,9 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_owner", ["ownerToken"]),
 
   /**
    * Deployment credentials, split from `agents` so list/get queries can

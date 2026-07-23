@@ -2,7 +2,7 @@
 
 import { ConvexError } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Constant-time string comparison for shared secrets (content-independent
@@ -48,6 +48,32 @@ export function requireDashboardSecret(secret: string | undefined): void {
     // ConvexError so the message survives prod redaction — the web UI keys
     // its unlock screen off this exact string.
     throw new ConvexError("Invalid dashboard secret");
+  }
+}
+
+/**
+ * Per-browser agent scoping. The builder UI mints a random owner token on
+ * first visit (localStorage) and sends it with every dashboard call; agents
+ * are stamped with it on create and only visible/manageable to callers
+ * holding the same token. Rows created before tokens existed carry none
+ * ("legacy"): they stay visible to everyone so existing operators can find
+ * them, and the first token-bearing browser that writes to one claims it.
+ */
+export function ownsAgent(
+  agent: Doc<"agents">,
+  token: string | undefined,
+): boolean {
+  if (agent.ownerToken === undefined) return true; // legacy/unclaimed
+  return token !== undefined && timingSafeEqual(agent.ownerToken, token);
+}
+
+/** Mutation guard: unknown and someone-else's agents look identical. */
+export function requireAgentOwner(
+  agent: Doc<"agents">,
+  token: string | undefined,
+): void {
+  if (!ownsAgent(agent, token)) {
+    throw new ConvexError("Agent not found");
   }
 }
 

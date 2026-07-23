@@ -30,3 +30,36 @@ export interface ModelKeyCredential {
   provider: ModelProvider;
   apiKey: string;
 }
+
+/** True when this deployment can bill model calls without a visitor key. */
+export function hasOwnerCredential(): boolean {
+  return (
+    (process.env.AI_GATEWAY_API_KEY ?? "").trim() !== "" ||
+    (process.env.VERCEL_OIDC_TOKEN ?? "").trim() !== "" ||
+    (process.env.OPENROUTER_API_KEY ?? "").trim() !== ""
+  );
+}
+
+/** Owner baseline: gateway credentials win; OpenRouter is the fallback. */
+export function ownerOpenRouterKey(): string | undefined {
+  const hasGatewayCredential =
+    (process.env.AI_GATEWAY_API_KEY ?? "").trim() !== "" ||
+    (process.env.VERCEL_OIDC_TOKEN ?? "").trim() !== "";
+  if (hasGatewayCredential) return undefined;
+  const openRouterKey = (process.env.OPENROUTER_API_KEY ?? "").trim();
+  return openRouterKey === "" ? undefined : openRouterKey;
+}
+
+/** Which provider the deployment's own env key uses (for catalog fetches). */
+export function ownerProvider(): ModelProvider | null {
+  if (!hasOwnerCredential()) return null;
+  return ownerOpenRouterKey() !== undefined ? "openrouter" : "gateway";
+}
+
+/** The deployment env key value for catalog fetches (never expose to clients). */
+export function ownerApiKey(): string | null {
+  const openRouter = ownerOpenRouterKey();
+  if (openRouter !== undefined) return openRouter;
+  const gateway = (process.env.AI_GATEWAY_API_KEY ?? "").trim();
+  return gateway === "" ? null : gateway;
+}

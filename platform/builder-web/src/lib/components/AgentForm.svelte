@@ -252,8 +252,9 @@ instead of grinding through everything in one thread.
   async function validateGatewayKey(): Promise<boolean> {
     const key = gatewayKey.trim();
     if (key === "") {
+      // Edit with a stored key: leave blank to keep it. Create: required.
       keyCheck = { status: "idle", message: "" };
-      return true; // blank is allowed (optional field / keep stored key)
+      return Boolean(agent?.hasGatewayKey);
     }
     if (key === checkedKey && keyCheck.status === "valid") return true;
     const seq = ++checkSeq;
@@ -293,8 +294,14 @@ instead of grinding through everything in one thread.
     if (saving) return;
     saving = true;
     error = null;
+    // Key is required for create; on edit a blank field keeps the stored key.
+    if (!gatewayKey.trim() && !agent?.hasGatewayKey) {
+      error = "AI Gateway API key is required — chat and schedules bill this key.";
+      saving = false;
+      return;
+    }
     // Gate the save on the key check: a bad key would only surface after
-    // deploy, as scheduled sessions that silently fail.
+    // deploy as failed chat / schedule sessions.
     if (gatewayKey.trim() && !(await validateGatewayKey())) {
       error = `AI Gateway key: ${keyCheck.message}`;
       saving = false;
@@ -333,7 +340,7 @@ instead of grinding through everything in one thread.
         const id = await client.mutation(agentsApi.create, {
           ...config,
           ...authArgs(),
-          ...(gatewayKey.trim() ? { aiGatewayApiKey: gatewayKey.trim() } : {}),
+          aiGatewayApiKey: gatewayKey.trim(),
           ...(telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
           ...(composioKey.trim() ? { composioApiKey: composioKey.trim() } : {}),
           ...(convexDeployKey.trim() ? { convexDeployKey: convexDeployKey.trim() } : {}),
@@ -595,9 +602,9 @@ instead of grinding through everything in one thread.
       <Label for="gateway-key" class="flex-wrap">
         AI Gateway API key
         <span class="font-normal text-muted-foreground">
-          (optional — powers scheduled + webhook sessions; chat visitors bring their own key{agent?.hasGatewayKey
-            ? "; a key is already stored, leave blank to keep it"
-            : ""})
+          {agent?.hasGatewayKey
+            ? "(required — leave blank to keep the stored key; powers chat, schedules, and webhooks)"
+            : "(required — powers chat, schedules, and webhooks on the deployed agent)"}
         </span>
       </Label>
       <Input

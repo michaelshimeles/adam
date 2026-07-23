@@ -3,10 +3,14 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
-import { modelProviderValidator, normalizeProvider } from "./lib/modelKeys";
+import {
+  hasOwnerCredential,
+  modelProviderValidator,
+  normalizeProvider,
+} from "./lib/modelKeys";
 import { loadEveBundle, type EveRouteEvent } from "./runner/bundle";
 import { deliverSessionInline } from "./runner/engine";
-import { withModelKey } from "./runner/modelKeyLock";
+import { OWNER, withModelKey } from "./runner/modelKeyLock";
 
 /**
  * Chat entry point for the web UI — the Convex-native replacement for the
@@ -19,12 +23,10 @@ import { withModelKey } from "./runner/modelKeyLock";
  * response returns immediately with the session id; the UI watches the
  * session's event stream reactively via ui:sessionEvents.
  *
- * BYOK: the deployment is public, so every send must carry the caller's own
- * key — a Vercel AI Gateway key or an OpenRouter key. The key (and which
- * provider it belongs to) is recorded against the session's run id (keys
- * table) and runner/engine:tick injects it before executing that session's
- * jobs — model calls spend the visitor's credits, not the deployment's.
- * There is still no end-user auth beyond that; transcripts are demo-public.
+ * Credentials: builder-deployed agents set AI_GATEWAY_API_KEY on the
+ * deployment; when the client omits apiKey and that env is present, the
+ * turn runs on owner credentials (same as schedules). Otherwise the caller
+ * must bring a Vercel AI Gateway or OpenRouter key (BYOK).
  */
 
 const sendResult = v.object({
@@ -37,8 +39,11 @@ const sendResult = v.object({
 
 export const send = action({
   args: {
-    /** The caller's model API key — pays for this session's turns. */
-    apiKey: v.string(),
+    /**
+     * Optional visitor key. Omit when the deployment has its own
+     * AI_GATEWAY_API_KEY / OPENROUTER_API_KEY (builder-configured agents).
+     */
+    apiKey: v.optional(v.string()),
     /** Which service issued apiKey; omitted means "gateway". */
     provider: v.optional(modelProviderValidator),
     /** Omit for a new session; pass the previous sessionId to continue. */
@@ -57,9 +62,9 @@ export const send = action({
   },
   returns: sendResult,
   handler: async (ctx, args) => {
-    const apiKey = args.apiKey.trim();
-    const provider = normalizeProvider(args.provider);
-    if (!apiKey) {
+    const visitorKey = args.apiKey?.trim() ?? "";
+    const useOwner = visitorKey === "" && hasOwnerCredential();
+    if (!useOwner && visitorKey === "") {
       return {
         ok: false,
         status: 400,
@@ -67,17 +72,27 @@ export const send = action({
           "An API key (Vercel AI Gateway or OpenRouter) is required to chat.",
       };
     }
+    const provider = normalizeProvider(args.provider);
+    const credential = useOwner
+      ? OWNER
+      : { provider, apiKey: visitorKey };
 
     const { bundle } = await loadEveBundle(ctx);
 
-    // Continuing a session: persist the key before the turn enqueues so the
-    // runner can never claim the job first and find no key.
+    // Continuing a session: persist the credential binding before the turn
+    // enqueues so the runner can never claim the job first and find none.
     if (args.sessionId) {
-      await ctx.runMutation(internal.keys.put, {
-        sessionId: args.sessionId,
-        apiKey,
-        provider,
-      });
+      if (useOwner) {
+        await ctx.runMutation(internal.keys.markSystem, {
+          sessionId: args.sessionId,
+        });
+      } else {
+        await ctx.runMutation(internal.keys.put, {
+          sessionId: args.sessionId,
+          apiKey: visitorKey,
+          provider,
+        });
+      }
     }
 
     const body: Record<string, unknown> = {};
@@ -117,10 +132,10 @@ export const send = action({
     };
 
     // Cover any model use inside the channel dispatch itself with the
-    // caller's key. withModelKey serializes credential injection
+    // chosen credential. withModelKey serializes credential injection
     // process-wide, so this can neither clobber nor be clobbered by a
     // concurrent runner delivery's injected key.
-    const result = await withModelKey({ provider, apiKey }, async () => {
+    const result = await withModelKey(credential, async () => {
       const response = await bundle.dispatchChannelRequest(event, routeKey, {
         dev: false,
       });
@@ -138,10 +153,18 @@ export const send = action({
         undefined;
 
       // New session: the first turn's job is already enqueued, so record the
-      // key immediately. The runner briefly releases jobs whose key hasn't
-      // landed yet (see runner/engine.ts), which closes the race window.
+      // credential immediately. The runner briefly releases jobs whose key
+      // hasn't landed yet (see runner/engine.ts), which closes the race window.
       if (!args.sessionId && sessionId) {
-        await ctx.runMutation(internal.keys.put, { sessionId, apiKey, provider });
+        if (useOwner) {
+          await ctx.runMutation(internal.keys.markSystem, { sessionId });
+        } else {
+          await ctx.runMutation(internal.keys.put, {
+            sessionId,
+            apiKey: visitorKey,
+            provider,
+          });
+        }
       }
 
       // Channel handlers may defer work via waitUntil; a Convex action must
@@ -182,7 +205,7 @@ export const send = action({
           await deliverSessionInline(
             ctx,
             bundle,
-            { provider, apiKey },
+            credential,
             result.sessionId,
           );
         } else {

@@ -14,6 +14,8 @@ const GATEWAY_ORIGIN = "https://ai-gateway.vercel.sh";
 export const validate = action({
   args: {
     dashboardSecret: v.optional(v.string()),
+    /** Sent by the UI's shared auth args; unused (no agent involved). */
+    ownerToken: v.optional(v.string()),
     apiKey: v.string(),
   },
   returns: v.object({

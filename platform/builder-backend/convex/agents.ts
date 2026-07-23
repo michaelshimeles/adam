@@ -2,22 +2,40 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { agentConfig } from "./schema";
-import { hasLiveWorker, purgeAgentRows, requireDashboardSecret, slugify } from "./lib";
+import {
+  hasLiveWorker,
+  ownsAgent,
+  purgeAgentRows,
+  requireAgentOwner,
+  requireDashboardSecret,
+  slugify,
+} from "./lib";
 
 /**
  * Public UI surface for the builder dashboard.
  *
- * Access control: every function takes an optional `dashboardSecret` checked
- * against the BUILDER_DASHBOARD_SECRET env var (lib.ts). Set it on deployed
- * builders so only holders of the secret can manage agents; leave it unset
- * for open local-dev/demo use. A multi-tenant product would replace this
- * with real user auth and per-owner scoping.
+ * Access control, two independent layers:
+ *  - `dashboardSecret`: optional site-wide gate, checked against the
+ *    BUILDER_DASHBOARD_SECRET env var (lib.ts). Set it on deployed builders;
+ *    leave it unset for open local-dev/demo use.
+ *  - `ownerToken`: per-browser capability minted by the UI (localStorage).
+ *    Agents are stamped with it on create; list/get/mutations only match the
+ *    caller's own agents, so visitors never see each other's agents. Rows
+ *    from before tokens existed are unclaimed — visible to everyone until a
+ *    token-bearing browser writes to them. Real user auth would replace this.
  */
 
-/** Shared arg: dashboard access secret (required when the env gate is set). */
+/** Shared args: site gate secret + per-browser owner token. */
 const dashboardAuthArgs = {
   dashboardSecret: v.optional(v.string()),
+  ownerToken: v.optional(v.string()),
 };
+
+/** Strip the owner capability token before a row leaves the deployment. */
+function toSummary(agent: Doc<"agents">): Omit<Doc<"agents">, "ownerToken"> {
+  const { ownerToken: _ownerToken, ...summary } = agent;
+  return summary;
+}
 
 const agentSummary = v.object({
   _id: v.id("agents"),
@@ -41,9 +59,9 @@ const agentSummary = v.object({
   bundleVersion: v.optional(v.string()),
   /**
    * Shared secret callers put in x-webhook-secret. Exposing it to the
-   * dashboard is the point (users wire it into their external systems).
-   * Reads are behind the dashboard gate when BUILDER_DASHBOARD_SECRET is
-   * set; a multi-tenant product would show it only to the agent's owner.
+   * dashboard is the point (users wire it into their external systems);
+   * reads are scoped to the agent's owner token (plus the optional
+   * site-wide dashboard gate).
    */
   webhookSecret: v.optional(v.string()),
   lastDeployedAt: v.optional(v.number()),
@@ -135,9 +153,25 @@ export const list = query({
   returns: v.array(agentSummary),
   handler: async (ctx, args) => {
     requireDashboardSecret(args.dashboardSecret);
-    // Single-tenant dashboard: the agent list is small and bounded.
-    const agents = await ctx.db.query("agents").order("desc").take(100);
-    return agents;
+    const token = args.ownerToken?.trim() || undefined;
+    // This browser's agents, plus unclaimed pre-token rows (kept visible so
+    // existing operators can still find, claim, or delete them).
+    const mine = token
+      ? await ctx.db
+          .query("agents")
+          .withIndex("by_owner", (q) => q.eq("ownerToken", token))
+          .order("desc")
+          .take(100)
+      : [];
+    const legacy = await ctx.db
+      .query("agents")
+      .withIndex("by_owner", (q) => q.eq("ownerToken", undefined))
+      .order("desc")
+      .take(100);
+    return [...mine, ...legacy]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 100)
+      .map(toSummary);
   },
 });
 
@@ -146,7 +180,11 @@ export const get = query({
   returns: v.union(agentSummary, v.null()),
   handler: async (ctx, args) => {
     requireDashboardSecret(args.dashboardSecret);
-    return await ctx.db.get(args.agentId);
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || !ownsAgent(agent, args.ownerToken?.trim() || undefined)) {
+      return null;
+    }
+    return toSummary(agent);
   },
 });
 
@@ -154,7 +192,8 @@ export const create = mutation({
   args: {
     ...dashboardAuthArgs,
     ...configArgs,
-    aiGatewayApiKey: v.optional(v.string()),
+    /** Required — set as AI_GATEWAY_API_KEY on the deployed agent. */
+    aiGatewayApiKey: v.string(),
     telegramBotToken: v.optional(v.string()),
     composioApiKey: v.optional(v.string()),
     convexDeployKey: v.optional(v.string()),
@@ -164,7 +203,12 @@ export const create = mutation({
     requireDashboardSecret(args.dashboardSecret);
     validateConfig(args);
     const now = Date.now();
-    const key = args.aiGatewayApiKey?.trim();
+    const key = args.aiGatewayApiKey.trim();
+    if (!key) {
+      throw new ConvexError(
+        "AI Gateway API key is required — chat and schedules bill this key",
+      );
+    }
     const telegramToken = args.telegramBotToken?.trim();
     const composioKey = args.composioApiKey?.trim();
     const deployKey = args.convexDeployKey?.trim();
@@ -179,7 +223,8 @@ export const create = mutation({
       schedule: args.schedule,
       channels: args.channels,
       status: "draft",
-      hasGatewayKey: Boolean(key),
+      ownerToken: args.ownerToken?.trim() || undefined,
+      hasGatewayKey: true,
       hasTelegramToken: Boolean(telegramToken),
       hasComposioKey: Boolean(composioKey),
       hasConvexDeployKey: Boolean(deployKey),
@@ -188,7 +233,7 @@ export const create = mutation({
     });
     await ctx.db.insert("agentSecrets", {
       agentId,
-      aiGatewayApiKey: key || undefined,
+      aiGatewayApiKey: key,
       telegramBotToken: telegramToken || undefined,
       composioApiKey: composioKey || undefined,
       convexDeployKey: deployKey || undefined,
@@ -215,8 +260,10 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     requireDashboardSecret(args.dashboardSecret);
+    const token = args.ownerToken?.trim() || undefined;
     const agent = await ctx.db.get(args.agentId);
     if (!agent) throw new Error("Agent not found");
+    requireAgentOwner(agent, token);
     if (agent.status === "deploying") {
       throw new Error("Agent is deploying — wait for the current deploy to finish");
     }
@@ -233,8 +280,13 @@ export const update = mutation({
     const secretPatch: Record<string, string | number | undefined> = {};
     if (args.aiGatewayApiKey !== undefined) {
       const key = args.aiGatewayApiKey.trim();
-      secretPatch.aiGatewayApiKey = key || undefined;
-      hasGatewayKey = Boolean(key);
+      if (!key) {
+        throw new ConvexError(
+          "AI Gateway API key is required — chat and schedules bill this key",
+        );
+      }
+      secretPatch.aiGatewayApiKey = key;
+      hasGatewayKey = true;
     }
     if (args.telegramBotToken !== undefined) {
       const token = args.telegramBotToken.trim();
@@ -279,6 +331,8 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.agentId, {
+      // First write from a token-bearing browser claims a legacy row.
+      ...(agent.ownerToken === undefined && token ? { ownerToken: token } : {}),
       name: args.name.trim(),
       model: args.model.trim(),
       instructions: args.instructions,
@@ -302,8 +356,10 @@ export const requestDeploy = mutation({
   returns: v.id("deployJobs"),
   handler: async (ctx, args) => {
     requireDashboardSecret(args.dashboardSecret);
+    const token = args.ownerToken?.trim() || undefined;
     const agent = await ctx.db.get(args.agentId);
     if (!agent) throw new Error("Agent not found");
+    requireAgentOwner(agent, token);
     if (agent.status === "deleting") {
       throw new Error("Agent is being deleted");
     }
@@ -321,6 +377,12 @@ export const requestDeploy = mutation({
     // Fail fast instead of parking the agent in "deploying" until the
     // pending-job reaper gives up. ConvexError so the message survives prod
     // redaction and reaches the dashboard.
+    if (!agent.hasGatewayKey) {
+      throw new ConvexError(
+        "Add an AI Gateway API key before deploying — chat and schedules bill this key",
+      );
+    }
+
     if (!(await hasLiveWorker(ctx))) {
       throw new ConvexError(
         "No build worker is online — start platform/worker, then retry",
@@ -335,6 +397,8 @@ export const requestDeploy = mutation({
       createdAt: Date.now(),
     });
     await ctx.db.patch(args.agentId, {
+      // First write from a token-bearing browser claims a legacy row.
+      ...(agent.ownerToken === undefined && token ? { ownerToken: token } : {}),
       status: "deploying",
       lastError: undefined,
       updatedAt: Date.now(),
@@ -360,6 +424,7 @@ export const remove = mutation({
     requireDashboardSecret(args.dashboardSecret);
     const agent = await ctx.db.get(args.agentId);
     if (!agent) return null; // already gone — deleting is idempotent
+    requireAgentOwner(agent, args.ownerToken?.trim() || undefined);
     if (agent.status === "deploying") {
       throw new Error(
         "Agent is deploying — wait for the deploy to finish before deleting",
@@ -432,6 +497,7 @@ export const cancelJob = mutation({
     requireDashboardSecret(args.dashboardSecret);
     const agent = await ctx.db.get(args.agentId);
     if (!agent) return null;
+    requireAgentOwner(agent, args.ownerToken?.trim() || undefined);
 
     const now = Date.now();
     const recent = await ctx.db
@@ -485,6 +551,10 @@ export const latestJob = query({
   returns: v.union(jobShape, v.null()),
   handler: async (ctx, args) => {
     requireDashboardSecret(args.dashboardSecret);
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || !ownsAgent(agent, args.ownerToken?.trim() || undefined)) {
+      return null;
+    }
     return await ctx.db
       .query("deployJobs")
       .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
@@ -500,6 +570,12 @@ export const jobLogs = query({
   ),
   handler: async (ctx, args) => {
     requireDashboardSecret(args.dashboardSecret);
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return [];
+    const agent = await ctx.db.get(job.agentId);
+    if (agent && !ownsAgent(agent, args.ownerToken?.trim() || undefined)) {
+      return [];
+    }
     // Deploy logs are bounded (worker truncates long lines, ~few hundred
     // rows per job); cap the read defensively.
     const rows = await ctx.db

@@ -199,7 +199,14 @@
           </Button>
         {/if}
         <Button variant="outline" size="sm" onclick={onEdit} disabled={busy}>Edit</Button>
-        <Button size="sm" onclick={deploy} disabled={busy}>
+        <Button
+          size="sm"
+          onclick={deploy}
+          disabled={busy || !agent.hasGatewayKey}
+          title={agent.hasGatewayKey
+            ? undefined
+            : "Add an AI Gateway API key (Edit) before deploying"}
+        >
           {agent.status === "deploying"
             ? "Deploying…"
             : agent.status === "deleting"
@@ -214,6 +221,13 @@
     {#if deployError}
       <Alert variant="destructive">
         <AlertDescription class="font-mono text-xs break-all">{deployError}</AlertDescription>
+      </Alert>
+    {:else if !agent.hasGatewayKey && !busy}
+      <Alert>
+        <AlertDescription class="font-mono text-xs">
+          Add an AI Gateway API key (Edit) before deploying — chat and schedules
+          bill this key on the deployed agent.
+        </AlertDescription>
       </Alert>
     {:else if !workerOnline && !busy}
       <Alert>
@@ -295,7 +309,7 @@
             ? 'border-b'
             : ''}"
         >
-          {agent.hasGatewayKey ? "deployment key stored" : "BYOK only"}
+          {agent.hasGatewayKey ? "deployment key stored" : "missing key"}
         </dd>
 
         {#if agent.status === "live" || agent.deploymentName}

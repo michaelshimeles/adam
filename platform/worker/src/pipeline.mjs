@@ -562,7 +562,7 @@ export async function deployAgent(input, opts) {
   log(
     aiGatewayApiKey
       ? "deployment credential set (AI_GATEWAY_API_KEY)"
-      : "no deployment credential — agent is BYOK-only (visitors bring a key)",
+      : "no deployment credential — chat will require a visitor key (builder should have blocked deploy)",
   );
   if ((webhookEnabled || telegramEnabled) && !aiGatewayApiKey) {
     log(

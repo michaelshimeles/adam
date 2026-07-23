@@ -295,7 +295,7 @@ export const tick = internalAction({
 export async function deliverSessionInline(
   ctx: ActionCtx,
   bundle: EveBundle,
-  credential: ModelKeyCredential,
+  credential: ModelKeyCredential | typeof OWNER,
   sessionId: string,
 ): Promise<void> {
   const startedAt = Date.now();
@@ -355,18 +355,16 @@ export const inlineSession = internalAction({
       system: boolean;
     }[];
     const row = rows[0];
-    if (!row || row.system || row.apiKey === undefined) {
-      // No visitor key registered (or a system session) — leave the jobs
-      // to the scheduled ticks, which handle owner-credential sessions.
+    if (!row) {
+      // Key not committed yet — scheduled ticks will retry.
       return null;
     }
     const { bundle } = await loadEveBundle(ctx);
-    await deliverSessionInline(
-      ctx,
-      bundle,
-      { provider: row.provider, apiKey: row.apiKey },
-      args.sessionId,
-    );
+    const credential =
+      row.system || row.apiKey === undefined
+        ? OWNER
+        : { provider: row.provider, apiKey: row.apiKey };
+    await deliverSessionInline(ctx, bundle, credential, args.sessionId);
     return null;
   },
 });

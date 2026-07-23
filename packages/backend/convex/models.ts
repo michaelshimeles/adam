@@ -1,15 +1,20 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { modelProviderValidator, normalizeProvider } from "./lib/modelKeys";
+import {
+  modelProviderValidator,
+  normalizeProvider,
+  ownerApiKey,
+  ownerProvider,
+} from "./lib/modelKeys";
 
 /**
  * Model catalog for the web chat's model picker.
  *
- * Fetched server-side with the visitor's own BYOK key (neither provider's
- * catalog endpoint allows browser CORS). Gateway keys read the AI Gateway's
- * config catalog — the same source the `ai` package's
- * `gateway.getAvailableModels()` uses — and OpenRouter keys read
- * OpenRouter's public model list, so the ids offered always match the
+ * Fetched server-side with either the visitor's BYOK key or the deployment's
+ * own credential (neither provider's catalog endpoint allows browser CORS).
+ * Gateway keys read the AI Gateway's config catalog — the same source the
+ * `ai` package's `gateway.getAvailableModels()` uses — and OpenRouter keys
+ * read OpenRouter's public model list, so the ids offered always match the
  * provider that will execute the turn.
  */
 
@@ -75,15 +80,22 @@ function parseCatalog(json: unknown): ModelOption[] {
 
 export const list = action({
   args: {
-    /** The visitor's BYOK key; scopes the catalog to their provider. */
-    apiKey: v.string(),
+    /**
+     * Optional visitor BYOK key. When omitted, the deployment's own
+     * AI_GATEWAY_API_KEY / OPENROUTER_API_KEY is used (if present).
+     */
+    apiKey: v.optional(v.string()),
     provider: v.optional(modelProviderValidator),
   },
   returns: v.object({ models: v.array(modelOption) }),
   handler: async (_ctx, args): Promise<{ models: ModelOption[] }> => {
-    const apiKey = args.apiKey.trim();
+    const visitorKey = args.apiKey?.trim() ?? "";
+    const apiKey = visitorKey !== "" ? visitorKey : ownerApiKey();
     if (!apiKey) return { models: [] };
-    const provider = normalizeProvider(args.provider);
+    const provider =
+      visitorKey !== ""
+        ? normalizeProvider(args.provider)
+        : (ownerProvider() ?? "gateway");
     const url =
       provider === "openrouter"
         ? `${OPENROUTER_ORIGIN}/api/v1/models`

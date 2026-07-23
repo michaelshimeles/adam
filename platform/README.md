@@ -74,11 +74,11 @@ list left, config form / detail + streaming deploy log right.
 
 ## Credentials model
 
-- **Chat is BYOK**: visitors to the deployed agent's site paste their own AI
-  Gateway key (validated, held server-side per session).
-- **Schedules** run on the deployment's own `AI_GATEWAY_API_KEY`, provided
-  (optionally) in the builder form and stored in the `agentSecrets` table —
-  read only by the secret-guarded worker API, never returned to the browser.
+- **AI Gateway key is required** in the builder form before deploy. The worker
+  sets it as `AI_GATEWAY_API_KEY` on the agent deployment; chat, schedules,
+  and webhooks bill that key. The deployed site skips the visitor key dialog.
+- The key is stored in `agentSecrets` — read only by the secret-guarded worker
+  API, never returned to the browser.
 - **Worker API** (`worker:claim/setStep/appendLogs/complete`) is gated by
   `PLATFORM_WORKER_SECRET`, same trust model as the agent backend's
   `WORLD_SERVICE_SECRET`.
@@ -86,12 +86,18 @@ list left, config form / detail + streaming deploy log right.
   `BUILDER_DASHBOARD_SECRET` on the builder deployment and the web UI shows
   an unlock screen (the secret is kept in localStorage and sent with every
   call). Leave it unset for open local-dev use.
+- **Per-browser agent scoping**: each browser mints a random owner token on
+  first visit (localStorage) and every `agents:*` call carries it. Agents are
+  stamped with the creator's token — visitors to a shared builder only see
+  their own agents. Pre-token rows are unclaimed (visible to everyone) until
+  their next edit/deploy claims them. Clearing site data starts the browser
+  with an empty builder; deployed agents themselves are unaffected.
 
 ## Prototype caveats (before this is a product)
 
-- Builder access is a single shared secret (`BUILDER_DASHBOARD_SECRET`),
-  not per-user auth — a real deployment wraps `agents:*` in authed custom
-  functions and scopes agents to owners.
+- Ownership is a browser-local capability token, not user auth — no recovery
+  if storage is cleared, no cross-device access. A real deployment wraps
+  `agents:*` in authed custom functions and scopes agents to user accounts.
 - Gateway keys are stored plaintext in `agentSecrets`; vault/KMS-encrypt them.
 - Provisioning uses the operator's Convex CLI login and creates **dev cloud**
   deployments; production would use the Management API with a team access
