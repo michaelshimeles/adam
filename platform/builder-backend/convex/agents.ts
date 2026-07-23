@@ -231,7 +231,9 @@ export const create = mutation({
       status: "draft",
       ownerToken: args.ownerToken?.trim() || undefined,
       hasGatewayKey: true,
-      modelKeyProvider: openRouterKey ? "openrouter" : "gateway",
+      // Mirrors the secret-row rule below: gateway wins when both keys are
+      // sent, so the provider metadata always matches the stored credential.
+      modelKeyProvider: gatewayKey ? "gateway" : "openrouter",
       hasTelegramToken: Boolean(telegramToken),
       hasComposioKey: Boolean(composioKey),
       hasConvexDeployKey: Boolean(deployKey),
