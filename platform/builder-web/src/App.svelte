@@ -55,7 +55,7 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
   <nav class="flex min-h-14 shrink-0 items-center justify-between gap-4 border-b px-4 md:px-5">
     <div class="flex min-w-0 items-baseline gap-2.5">
-      <span class="truncate text-sm font-semibold tracking-[-0.28px]">eve agent builder</span>
+      <span class="truncate text-sm font-semibold tracking-[-0.28px]">adam agent builder</span>
       <span class="hidden font-mono text-xs text-gray-600 md:inline">
         one-click durable agents on Convex
       </span>

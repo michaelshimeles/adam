@@ -1,26 +1,24 @@
 import { v } from "convex/values";
-import { action } from "./_generated/server";
-import {
-  hostedChatEnabled,
-  modelProviderValidator,
-  normalizeProvider,
-  ownerApiKey,
-  ownerProvider,
-} from "./lib/modelKeys";
+import { internal } from "./_generated/api";
+import { action, internalQuery } from "./_generated/server";
+import { ownsAgent, requireDashboardSecret } from "./lib";
 
 /**
- * Model catalog for the web chat's model picker.
- *
- * Fetched server-side with either the visitor's BYOK key or the deployment's
- * own credential (neither provider's catalog endpoint allows browser CORS).
- * Gateway keys read the AI Gateway's OpenAI-compatible model list
- * (/v1/models — the older /v1/config catalog now 404s) and OpenRouter keys
- * read OpenRouter's public model list, so the ids offered always match the
- * provider that will execute the turn.
+ * Model catalog for the builder form's model picker — same sources as the
+ * deployed agent's picker (packages/backend/convex/models.ts). Fetched
+ * server-side because neither provider's catalog endpoint allows browser
+ * CORS. The caller either supplies the key it just typed in the form, or an
+ * agentId whose STORED credential is used server-side (never sent to the
+ * browser).
  */
 
 const GATEWAY_ORIGIN = "https://ai-gateway.vercel.sh";
 const OPENROUTER_ORIGIN = "https://openrouter.ai";
+
+const providerValidator = v.union(
+  v.literal("gateway"),
+  v.literal("openrouter"),
+);
 
 const modelOption = v.object({
   id: v.string(),
@@ -62,8 +60,8 @@ function parseCatalog(json: unknown): ModelOption[] {
     const entry = row as Record<string, unknown>;
     const id = asString(entry.id);
     if (!id) continue;
-    // The gateway catalog tags non-chat entries (embeddings, images) —
-    // `modelType` in the legacy config catalog, `type` in /v1/models.
+    // Both catalogs tag non-chat entries (embeddings, images) — `type` in
+    // the gateway's /v1/models, `modelType` in its legacy config catalog.
     const modelType = asString(entry.modelType) ?? asString(entry.type);
     if (modelType !== undefined && modelType !== "language") continue;
     const pricingRaw = (entry.pricing ?? null) as Record<string, unknown> | null;
@@ -80,26 +78,66 @@ function parseCatalog(json: unknown): ModelOption[] {
   return options;
 }
 
+/**
+ * The stored credential for an agent the caller owns — internal only; the
+ * key never crosses to the browser.
+ */
+export const credentialForAgent = internalQuery({
+  args: {
+    agentId: v.id("agents"),
+    ownerToken: v.optional(v.string()),
+  },
+  returns: v.union(
+    v.object({ apiKey: v.string(), provider: providerValidator }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || !ownsAgent(agent, args.ownerToken?.trim() || undefined)) {
+      return null;
+    }
+    const secret = await ctx.db
+      .query("agentSecrets")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .unique();
+    if (secret?.openRouterApiKey) {
+      return { apiKey: secret.openRouterApiKey, provider: "openrouter" as const };
+    }
+    if (secret?.aiGatewayApiKey) {
+      return { apiKey: secret.aiGatewayApiKey, provider: "gateway" as const };
+    }
+    return null;
+  },
+});
+
 export const list = action({
   args: {
-    /**
-     * Optional visitor BYOK key. When omitted, the deployment's own
-     * credential is used — but only where chat itself is owner-billed
-     * (CHAT_USE_DEPLOYMENT_KEY=1, i.e. builder-deployed agents).
-     */
+    dashboardSecret: v.optional(v.string()),
+    ownerToken: v.optional(v.string()),
+    /** A key typed in the form (validated there) — used when present. */
     apiKey: v.optional(v.string()),
-    provider: v.optional(modelProviderValidator),
+    provider: v.optional(providerValidator),
+    /** Edit mode: fall back to this agent's stored credential. */
+    agentId: v.optional(v.id("agents")),
   },
   returns: v.object({ models: v.array(modelOption) }),
-  handler: async (_ctx, args): Promise<{ models: ModelOption[] }> => {
-    const visitorKey = args.apiKey?.trim() ?? "";
-    if (visitorKey === "" && !hostedChatEnabled()) return { models: [] };
-    const apiKey = visitorKey !== "" ? visitorKey : ownerApiKey();
+  handler: async (ctx, args): Promise<{ models: ModelOption[] }> => {
+    requireDashboardSecret(args.dashboardSecret);
+
+    let apiKey = args.apiKey?.trim() || undefined;
+    let provider = args.provider ?? "gateway";
+    if (!apiKey && args.agentId) {
+      const stored = await ctx.runQuery(internal.models.credentialForAgent, {
+        agentId: args.agentId,
+        ownerToken: args.ownerToken,
+      });
+      if (stored) {
+        apiKey = stored.apiKey;
+        provider = stored.provider;
+      }
+    }
     if (!apiKey) return { models: [] };
-    const provider =
-      visitorKey !== ""
-        ? normalizeProvider(args.provider)
-        : (ownerProvider() ?? "gateway");
+
     const url =
       provider === "openrouter"
         ? `${OPENROUTER_ORIGIN}/api/v1/models`

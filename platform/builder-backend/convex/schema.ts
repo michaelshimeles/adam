@@ -99,8 +99,15 @@ export default defineSchema({
      * Never returned to clients.
      */
     ownerToken: v.optional(v.string()),
-    /** Set by create/update so the UI can show it without reading secrets. */
+    /**
+     * True when a model credential (AI Gateway or OpenRouter) is stored.
+     * Named for the gateway-only era; kept to avoid a data migration.
+     */
     hasGatewayKey: v.boolean(),
+    /** Which provider the stored model credential belongs to. Absent = gateway. */
+    modelKeyProvider: v.optional(
+      v.union(v.literal("gateway"), v.literal("openrouter")),
+    ),
     hasTelegramToken: v.optional(v.boolean()),
     hasComposioKey: v.optional(v.boolean()),
     hasConvexDeployKey: v.optional(v.boolean()),
@@ -131,8 +138,10 @@ export default defineSchema({
    */
   agentSecrets: defineTable({
     agentId: v.id("agents"),
-    /** Deployment-level model credential (pays for schedule sessions). */
+    /** Deployment-level model credential — at most one of these is set. */
     aiGatewayApiKey: v.optional(v.string()),
+    /** OpenRouter alternative to aiGatewayApiKey (sk-or-…). */
+    openRouterApiKey: v.optional(v.string()),
     /** Telegram bot token (from @BotFather) for the telegram channel. */
     telegramBotToken: v.optional(v.string()),
     /** Composio API key for the composio MCP connection. */

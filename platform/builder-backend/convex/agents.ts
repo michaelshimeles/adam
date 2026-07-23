@@ -49,6 +49,9 @@ const agentSummary = v.object({
     v.literal("deleting"),
   ),
   hasGatewayKey: v.boolean(),
+  modelKeyProvider: v.optional(
+    v.union(v.literal("gateway"), v.literal("openrouter")),
+  ),
   hasTelegramToken: v.optional(v.boolean()),
   hasComposioKey: v.optional(v.boolean()),
   hasConvexDeployKey: v.optional(v.boolean()),
@@ -188,12 +191,16 @@ export const get = query({
   },
 });
 
+const MODEL_KEY_REQUIRED =
+  "A model API key (AI Gateway or OpenRouter) is required — chat and schedules bill this key";
+
 export const create = mutation({
   args: {
     ...dashboardAuthArgs,
     ...configArgs,
-    /** Required — set as AI_GATEWAY_API_KEY on the deployed agent. */
-    aiGatewayApiKey: v.string(),
+    /** Exactly one of these is required — becomes the deployment credential. */
+    aiGatewayApiKey: v.optional(v.string()),
+    openRouterApiKey: v.optional(v.string()),
     telegramBotToken: v.optional(v.string()),
     composioApiKey: v.optional(v.string()),
     convexDeployKey: v.optional(v.string()),
@@ -203,11 +210,10 @@ export const create = mutation({
     requireDashboardSecret(args.dashboardSecret);
     validateConfig(args);
     const now = Date.now();
-    const key = args.aiGatewayApiKey.trim();
-    if (!key) {
-      throw new ConvexError(
-        "AI Gateway API key is required — chat and schedules bill this key",
-      );
+    const gatewayKey = args.aiGatewayApiKey?.trim();
+    const openRouterKey = args.openRouterApiKey?.trim();
+    if (!gatewayKey && !openRouterKey) {
+      throw new ConvexError(MODEL_KEY_REQUIRED);
     }
     const telegramToken = args.telegramBotToken?.trim();
     const composioKey = args.composioApiKey?.trim();
@@ -225,6 +231,9 @@ export const create = mutation({
       status: "draft",
       ownerToken: args.ownerToken?.trim() || undefined,
       hasGatewayKey: true,
+      // Mirrors the secret-row rule below: gateway wins when both keys are
+      // sent, so the provider metadata always matches the stored credential.
+      modelKeyProvider: gatewayKey ? "gateway" : "openrouter",
       hasTelegramToken: Boolean(telegramToken),
       hasComposioKey: Boolean(composioKey),
       hasConvexDeployKey: Boolean(deployKey),
@@ -233,7 +242,9 @@ export const create = mutation({
     });
     await ctx.db.insert("agentSecrets", {
       agentId,
-      aiGatewayApiKey: key,
+      // At most one credential is stored; gateway wins if both slip through.
+      aiGatewayApiKey: gatewayKey || undefined,
+      openRouterApiKey: gatewayKey ? undefined : openRouterKey || undefined,
       telegramBotToken: telegramToken || undefined,
       composioApiKey: composioKey || undefined,
       convexDeployKey: deployKey || undefined,
@@ -248,13 +259,17 @@ export const update = mutation({
     ...dashboardAuthArgs,
     agentId: v.id("agents"),
     ...configArgs,
-    /** Omit to keep the stored key; pass a value to replace it; "" clears. */
+    /**
+     * Omit both to keep the stored model credential; pass one to replace it
+     * (the other provider's stored key is cleared).
+     */
     aiGatewayApiKey: v.optional(v.string()),
-    /** Same omit/replace/clear semantics as aiGatewayApiKey. */
+    openRouterApiKey: v.optional(v.string()),
+    /** Omit to keep the stored value; pass a value to replace it; "" clears. */
     telegramBotToken: v.optional(v.string()),
-    /** Same omit/replace/clear semantics as aiGatewayApiKey. */
+    /** Same omit/replace/clear semantics as telegramBotToken. */
     composioApiKey: v.optional(v.string()),
-    /** Same omit/replace/clear semantics as aiGatewayApiKey. */
+    /** Same omit/replace/clear semantics as telegramBotToken. */
     convexDeployKey: v.optional(v.string()),
   },
   returns: v.null(),
@@ -274,18 +289,22 @@ export const update = mutation({
     const now = Date.now();
 
     let hasGatewayKey = agent.hasGatewayKey;
+    let modelKeyProvider = agent.modelKeyProvider ?? "gateway";
     let hasTelegramToken = agent.hasTelegramToken ?? false;
     let hasComposioKey = agent.hasComposioKey ?? false;
     let hasConvexDeployKey = agent.hasConvexDeployKey ?? false;
     const secretPatch: Record<string, string | number | undefined> = {};
-    if (args.aiGatewayApiKey !== undefined) {
-      const key = args.aiGatewayApiKey.trim();
-      if (!key) {
-        throw new ConvexError(
-          "AI Gateway API key is required — chat and schedules bill this key",
-        );
+    if (args.aiGatewayApiKey !== undefined || args.openRouterApiKey !== undefined) {
+      const gatewayKey = args.aiGatewayApiKey?.trim();
+      const openRouterKey = args.openRouterApiKey?.trim();
+      if (!gatewayKey && !openRouterKey) {
+        throw new ConvexError(MODEL_KEY_REQUIRED);
       }
-      secretPatch.aiGatewayApiKey = key;
+      // Replacing the credential swaps providers atomically: exactly one of
+      // the two secret fields survives.
+      secretPatch.aiGatewayApiKey = gatewayKey || undefined;
+      secretPatch.openRouterApiKey = gatewayKey ? undefined : openRouterKey;
+      modelKeyProvider = gatewayKey ? "gateway" : "openrouter";
       hasGatewayKey = true;
     }
     if (args.telegramBotToken !== undefined) {
@@ -341,6 +360,7 @@ export const update = mutation({
       schedule: args.schedule,
       channels: args.channels,
       hasGatewayKey,
+      modelKeyProvider,
       hasTelegramToken,
       hasComposioKey,
       hasConvexDeployKey,
@@ -379,7 +399,7 @@ export const requestDeploy = mutation({
     // redaction and reaches the dashboard.
     if (!agent.hasGatewayKey) {
       throw new ConvexError(
-        "Add an AI Gateway API key before deploying — chat and schedules bill this key",
+        "Add a model API key (AI Gateway or OpenRouter) before deploying — chat and schedules bill this key",
       );
     }
 
@@ -451,6 +471,7 @@ export const remove = mutation({
       if (agent.deploymentName && secret.convexDeployKey) {
         await ctx.db.patch(secret._id, {
           aiGatewayApiKey: undefined,
+          openRouterApiKey: undefined,
           telegramBotToken: undefined,
           composioApiKey: undefined,
           updatedAt: Date.now(),
