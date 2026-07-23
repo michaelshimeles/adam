@@ -1,0 +1,21 @@
+# Linked Railway project: adam-worker (build worker for the agent builder).
+# Build context is the monorepo root.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "platform/worker/Dockerfile"
+watchPatterns = [
+  "platform/worker/**",
+  "apps/agent/**",
+  "apps/web/**",
+  "packages/backend/**",
+  "packages/ui/**",
+  "packages/world-convex/**",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+]
+
+[deploy]
+startCommand = "node platform/worker/src/index.mjs"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

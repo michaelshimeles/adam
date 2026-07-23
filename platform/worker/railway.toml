@@ -1,0 +1,28 @@
+# Deploy from the monorepo root so the worker can rsync apps/agent,
+# packages/backend, and build apps/web.
+#
+#   cd <repo-root>
+#   railway link   # or: railway init
+#   railway up --path-as-root platform/worker
+#
+# Or set the Railway service Root Directory to `/` and Dockerfile path to
+# `platform/worker/Dockerfile`.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "platform/worker/Dockerfile"
+watchPatterns = [
+  "platform/worker/**",
+  "apps/agent/**",
+  "apps/web/**",
+  "packages/backend/**",
+  "packages/ui/**",
+  "packages/world-convex/**",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+]
+
+[deploy]
+startCommand = "node platform/worker/src/index.mjs"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
