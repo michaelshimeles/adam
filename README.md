@@ -61,7 +61,7 @@ server. One Convex deployment runs and stores everything:
 | `packages/world-convex` | Implementation of `@workflow/world` (Storage + Queue + Streamer) backed by the Convex deployment. Compiled into the eve bundle via `experimental.workflow.world` |
 | `apps/agent` | The eve project: agent definition, Convex-backed tools (`save_note`, `list_notes`, `clear_notes` w/ HITL approval, `workflow_stats`, `get_time`, `simulate_long_task` for chunked long work), heartbeat schedule. Built with `eve build`, never started as a server |
 | `apps/web` | Svelte 5 + convex-svelte dashboard: chat with the agent (streaming + HITL), live notepad, run/step/event/stream observability |
-| `platform/*` | The **agent builder**: configure an agent (model, instructions, tools, schedule) in a dashboard and one-click deploy it to its own Convex project, with stuck deploy/delete job recovery (reaper cron, cancel, worker heartbeat). See [platform/README.md](platform/README.md) |
+| `platform/*` | The **adam agent builder**: configure an agent (model, instructions, tools, schedule) in a dashboard and one-click deploy it to its own Convex project, with stuck deploy/delete job recovery (reaper cron, cancel, worker heartbeat). See [platform/README.md](platform/README.md) |
 
 ## How the port works
 
