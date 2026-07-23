@@ -78,7 +78,7 @@ async function runTurn(label, sendArgs, { timeoutMs = 180_000 } = {}) {
     if (events.length > 0) {
       process.stdout.write(`  events: ${eventCount}\r`);
     }
-    if (terminal || page.done) break;
+    if (terminal || (page.done && page.events.length < 500)) break;
   }
   console.log(`\n  terminal: ${terminal ?? "TIMEOUT"}; events-are-strings: ${sawStringEvents}`);
   console.log(`  event types: ${[...types.entries()].map(([k, n]) => `${k}×${n}`).join(", ")}`);
