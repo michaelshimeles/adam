@@ -73,6 +73,27 @@ Open http://localhost:5175 for the landing page, or http://localhost:5175/builde
 for the agent builder. The builder header shows build-worker liveness; agents
 list left, config form / detail + streaming deploy log right.
 
+### Hosted worker (Railway)
+
+The worker is a long-running container (not a Convex/Vercel function). Image
+definition: `platform/worker/Dockerfile` (build context = monorepo root).
+
+```sh
+# once: railway login
+cd <repo-root>
+railway init                    # or: railway link
+railway variables set \
+  BUILDER_CONVEX_URL=https://<builder>.convex.cloud \
+  PLATFORM_WORKER_SECRET=<same as builder-backend> \
+  CONVEX_TEAM=rasmic \
+  CONVEX_OVERRIDE_ACCESS_TOKEN=<from ~/.convex/config.json accessToken>
+railway up                      # uses platform/worker/railway.toml
+```
+
+`CONVEX_OVERRIDE_ACCESS_TOKEN` is required in the container so `convex dev
+--configure new` can create per-agent projects without interactive login.
+Prefer a dedicated Convex team/service-account token in production.
+
 ## Credentials model
 
 - **A model API key is required** in the builder form before deploy — Vercel
