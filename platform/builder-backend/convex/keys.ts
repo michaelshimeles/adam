@@ -50,7 +50,9 @@ export const validate = action({
         balance: typeof json.balance === "string" ? json.balance : undefined,
       };
     } catch {
-      return { ok: true };
+      // A real gateway 200 is always JSON; anything else (an intercepting
+      // proxy, an HTML error page) must not mark the key valid.
+      return { ok: false, error: "The AI Gateway returned an invalid response." };
     }
   },
 });

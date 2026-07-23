@@ -22,24 +22,26 @@
   const client = useConvexClient();
 
   // Model catalog for the composer's picker, fetched with the visitor's own
-  // key once one exists (the catalog endpoints have no browser CORS).
+  // key once one exists (the catalog endpoints have no browser CORS). The
+  // catalog resets whenever the key changes: carrying the previous
+  // provider's list across a key swap would offer model ids the new key
+  // cannot run.
   let models = $state<ModelOption[]>([]);
   $effect(() => {
     const apiKey = modelKey.value;
     const provider = modelKey.provider;
-    if (!apiKey || !provider) {
-      models = [];
-      return;
-    }
+    models = [];
+    if (!apiKey || !provider) return;
     let cancelled = false;
     void client
       .action(modelsApi.list, { apiKey, provider })
       .then((result) => {
-        if (cancelled || result.models.length === 0) return;
+        if (cancelled) return;
         models = result.models;
-        // A saved model that left the catalog would fail every turn; fall
-        // back to the agent's configured default instead.
+        // A saved model missing from the new catalog would fail every turn;
+        // fall back to the agent's configured default instead.
         if (
+          result.models.length > 0 &&
           !result.models.some((option) => option.id === webModel.selected) &&
           webModel.selected !== DEFAULT_MODEL_ID
         ) {
