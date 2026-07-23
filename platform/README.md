@@ -1,8 +1,8 @@
-# eve agent builder
+# adam agent builder
 
-Configure an eve agent in a dashboard, click **Deploy**, get a live agent on
-its own Convex project — chat UI, durable workflows, tools, HITL approvals,
-cron schedules and all.
+Configure an agent in a dashboard, click **Deploy**, get a live agent on its
+own Convex project — chat UI, durable workflows, tools, HITL approvals, cron
+schedules and all.
 
 ```
 platform/

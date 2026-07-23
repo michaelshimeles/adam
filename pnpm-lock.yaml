@@ -202,6 +202,9 @@ importers:
 
   platform/builder-web:
     dependencies:
+      '@vercel/analytics':
+        specifier: ^2.0.1
+        version: 2.0.1(react@19.2.7)(svelte@5.56.4)
       convex:
         specifier: ^1.42.1
         version: 1.42.1(react@19.2.7)
