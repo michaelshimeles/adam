@@ -24,6 +24,7 @@ import type * as lib_typedjson from "../lib/typedjson.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_worldStore from "../lib/worldStore.js";
 import type * as memories from "../memories.js";
+import type * as models from "../models.js";
 import type * as notes from "../notes.js";
 import type * as receipts from "../receipts.js";
 import type * as reminders from "../reminders.js";
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validators": typeof lib_validators;
   "lib/worldStore": typeof lib_worldStore;
   memories: typeof memories;
+  models: typeof models;
   notes: typeof notes;
   receipts: typeof receipts;
   reminders: typeof reminders;

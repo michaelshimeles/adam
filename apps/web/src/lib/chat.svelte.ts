@@ -189,6 +189,8 @@ export function createChatSession(options?: {
   async function send(input: {
     message?: string;
     inputResponses?: InputResponse[];
+    /** One-turn context (e.g. { eveWebModel }) for the model resolver. */
+    clientContext?: Record<string, unknown>;
   }): Promise<void> {
     if (sendInFlight) return;
     // BYOK: the send action requires the visitor's own key (AI Gateway or
@@ -236,6 +238,9 @@ export function createChatSession(options?: {
           ? { inputResponses: input.inputResponses }
           : {}),
         ...(sessionId && continuationToken ? { continuationToken } : {}),
+        ...(input.clientContext !== undefined
+          ? { clientContext: input.clientContext }
+          : {}),
       });
       if (sendEpoch !== epoch) return; // switched sessions mid-flight
       if (!result.ok) {

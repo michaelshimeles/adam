@@ -174,6 +174,21 @@ export const agentsApi = {
   >("agents:workerHeartbeat"),
 };
 
+export interface KeyValidationResult {
+  ok: boolean;
+  balance?: string;
+  error?: string;
+}
+
+export const keysApi = {
+  /** Server-side AI Gateway key check (the credits endpoint has no CORS). */
+  validate: makeFunctionReference<
+    "action",
+    DashboardAuth & { apiKey: string },
+    KeyValidationResult
+  >("keys:validate"),
+};
+
 export const BUILDER_CONVEX_URL: string =
   (import.meta.env.VITE_BUILDER_CONVEX_URL as string | undefined) ??
   "https://rosy-goldfish-504.convex.cloud";
