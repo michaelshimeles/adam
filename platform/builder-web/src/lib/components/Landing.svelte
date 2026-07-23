@@ -1,14 +1,5 @@
 <script lang="ts">
-  import { useQuery } from "convex-svelte";
-  import { api, BUILDER_URL } from "../api";
   import { Button } from "ui/components/button";
-
-  const health = useQuery(api.queueHealth, {});
-  const runs = useQuery(api.listRuns, { limit: 100 });
-
-  const completedRuns = $derived(
-    runs.data ? runs.data.filter((r) => r.status === "completed").length : null,
-  );
 
   const command = "git clone github.com/michaelshimeles/adam";
 
@@ -24,28 +15,15 @@
     }
   }
 
-  // The hero console: real telemetry from the deployment serving this page.
-  const consoleRows = $derived([
-    {
-      key: "queue",
-      value: health.data ? `${health.data.pending} pending` : null,
-    },
-    {
-      key: "in flight",
-      value: health.data ? String(health.data.claimed) : null,
-    },
-    {
-      key: "dead letter",
-      value: health.data ? String(health.data.dead) : null,
-      alert: (health.data?.dead ?? 0) > 0,
-    },
-    {
-      key: "runs completed",
-      value: completedRuns === null ? null : String(completedRuns),
-    },
+  // Static product snapshot — no live Convex telemetry on the marketing page.
+  const consoleRows = [
+    { key: "queue", value: "leased jobs" },
+    { key: "in flight", value: "scheduler ticks" },
+    { key: "dead letter", value: "retries → DLQ" },
+    { key: "runs", value: "event-sourced" },
     { key: "runtime", value: "convex node action" },
     { key: "server", value: "none", good: true },
-  ]);
+  ];
 
   const steps = [
     {
@@ -104,7 +82,7 @@
     {
       title: "UI from static hosting",
       tag: "convex.site",
-      body: "This page and the dashboard are served by the deployment they describe, subscribed over one WebSocket.",
+      body: "Each agent's dashboard is served by the deployment it describes, subscribed over one WebSocket.",
     },
   ];
 
@@ -158,7 +136,7 @@
   </div>
 {/snippet}
 
-<div class="min-h-0 flex-1 scroll-smooth overflow-y-auto bg-background text-foreground">
+<div class="min-h-dvh scroll-smooth bg-background text-foreground">
   <!-- nav -->
   <nav
     class="sticky top-0 z-20 flex min-h-16 items-center justify-between border-b bg-background/70 px-4 backdrop-blur-md md:px-6"
@@ -194,11 +172,11 @@
           />
         </svg>
       </a>
-      <Button href={BUILDER_URL} size="sm">Open Builder</Button>
+      <Button href="/builder" size="sm">Open Builder</Button>
     </div>
   </nav>
 
-  <!-- hero: claim on the left, the live deployment proving it on the right -->
+  <!-- hero: claim on the left, product snapshot on the right -->
   <section class="mx-auto grid max-w-[1200px] items-center gap-12 px-4 pt-20 pb-24 md:px-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-16 lg:pt-28">
     <div class="min-w-0">
       <p class="m-0 mb-4 font-mono text-[11px] font-medium tracking-[0.14em] text-gray-600 uppercase">
@@ -223,7 +201,7 @@
       </p>
 
       <div class="mt-8 flex flex-wrap items-center gap-3">
-        <Button href={BUILDER_URL} size="lg">Open Builder</Button>
+        <Button href="/builder" size="lg">Open Builder</Button>
         <Button
           href="https://github.com/michaelshimeles/adam"
           target="_blank"
@@ -251,24 +229,16 @@
       </p>
     </div>
 
-    <!-- the signature: live telemetry from the deployment serving this page -->
+    <!-- product snapshot: what every adam deployment looks like -->
     <aside
       class="shadow-menu w-full min-w-0 rounded-xl border bg-background"
-      aria-label="Live deployment status"
+      aria-label="Adam deployment shape"
     >
       <div class="flex items-center justify-between gap-3 border-b px-4 py-3">
         <span class="truncate font-mono text-xs text-gray-600">adam@convex — deployment</span>
-        {#if health.data}
-          <span class="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-green-900">
-            <span class="size-1.5 animate-pulse rounded-full bg-current"></span> live
-          </span>
-        {:else if health.error}
-          <span class="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-red-900">
-            <span class="size-1.5 rounded-full bg-current"></span> offline
-          </span>
-        {:else}
-          <span class="shrink-0 font-mono text-[11px] text-gray-600">connecting…</span>
-        {/if}
+        <span class="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-green-900">
+          <span class="size-1.5 animate-pulse rounded-full bg-current"></span> live
+        </span>
       </div>
       <dl class="m-0 flex flex-col gap-2.5 px-4 py-4 font-mono text-[13px]">
         {#each consoleRows as row (row.key)}
@@ -276,13 +246,11 @@
             <dt class="shrink-0 text-gray-600">{row.key}</dt>
             <dd class="m-0 min-w-0 flex-1 border-b border-dashed border-alpha-300"></dd>
             <dd
-              class="m-0 shrink-0 tabular-nums {row.alert
-                ? 'text-red-900'
-                : row.good
-                  ? 'text-green-900'
-                  : 'text-gray-1000'}"
+              class="m-0 shrink-0 tabular-nums {row.good
+                ? 'text-green-900'
+                : 'text-gray-1000'}"
             >
-              {row.value ?? "…"}
+              {row.value}
             </dd>
           </div>
         {/each}
@@ -292,7 +260,7 @@
         </div>
       </dl>
       <p class="m-0 border-t px-4 py-2.5 text-[11px] leading-4 text-gray-600">
-        Real numbers — this page subscribes to the deployment it describes.
+        Queue, scheduler, runtime — one Convex project per agent.
       </p>
     </aside>
   </section>
@@ -432,7 +400,7 @@
       {@render sectionHead(
         "the builder",
         "Describe an agent, get a deployment",
-        "This site is one instance of the template. The builder stamps out new ones — each agent gets its own Convex project running the same ported runtime.",
+        "The builder stamps out new agents — each gets its own Convex project running the same ported runtime.",
       )}
       <div class="border-t">
         {#each builder as item (item.title)}
@@ -452,7 +420,7 @@
         {/each}
       </div>
       <div class="mt-8 flex justify-center">
-        <Button href={BUILDER_URL} size="lg">Open Builder</Button>
+        <Button href="/builder" size="lg">Open Builder</Button>
       </div>
     </div>
   </section>
@@ -463,7 +431,7 @@
       {@render sectionHead(
         "the deployment",
         "Architecture",
-        "How a chat message flows through the deployment and back to this page.",
+        "How a chat message flows through an agent deployment and back to its dashboard.",
       )}
 
       <div class="mx-auto max-w-[760px]">
@@ -538,7 +506,7 @@
               crons: lease reaper · sweep · heartbeat schedule
             </span>
             <span class="font-mono text-[11px] text-gray-600">
-              notes (app data) · static hosting (this page)
+              notes (app data) · static hosting (agent dashboard)
             </span>
           </div>
         </div>
@@ -556,7 +524,7 @@
 
         <div class="mx-auto flex w-fit flex-col items-center gap-1 rounded-md border bg-gray-100 px-6 py-3 text-center">
           <span class="font-mono text-[13px] font-medium text-gray-1000">
-            Svelte 5 dashboard — this site
+            Svelte 5 agent dashboard
           </span>
           <span class="font-mono text-[11px] text-gray-600">
             chat + HITL · notepad · runs / steps / streams
@@ -578,7 +546,7 @@
         Convex deployment, and visitors chat without bringing a key.
       </p>
       <div class="mx-auto flex max-w-80 flex-col justify-center gap-3 md:max-w-none md:flex-row">
-        <Button href={BUILDER_URL} size="lg">Open Builder</Button>
+        <Button href="/builder" size="lg">Open Builder</Button>
         <Button
           href="https://github.com/michaelshimeles/adam"
           target="_blank"

@@ -69,7 +69,8 @@ cd platform/builder-web
 npx vite --port 5175              # VITE_BUILDER_CONVEX_URL to point elsewhere
 ```
 
-Open http://localhost:5175 — the header shows build-worker liveness; agents
+Open http://localhost:5175 for the landing page, or http://localhost:5175/builder
+for the agent builder. The builder header shows build-worker liveness; agents
 list left, config form / detail + streaming deploy log right.
 
 ## Credentials model
