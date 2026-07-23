@@ -39,6 +39,16 @@
     deploymentCred.data === false && modelKey.value === null,
   );
 
+  // A visitor key saved before this deployment became hosted would silently
+  // keep billing that visitor — and hosted mode hides every control that
+  // could clear it. Drop it so chat + the model catalog use the deployment
+  // credential.
+  $effect(() => {
+    if (deploymentCred.data === true && modelKey.value !== null) {
+      modelKey.clear();
+    }
+  });
+
   // Point the chat at the active thread's session whenever it changes.
   let activatedThreadId: string | null = null;
   $effect(() => {
